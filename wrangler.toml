@@ -9,7 +9,7 @@ binding = "AI"
 
 [[kv_namespaces]]
 binding = "DEDUPE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "30bb89b028224d60aa448f0e513aaeec"
 
 [[r2_buckets]]
 binding = "AUDIO"
