@@ -1,0 +1,33 @@
+name = "idea-capture"
+main = "src/index.ts"
+compatibility_date = "2025-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+# Workers AI — default transcription provider (see README Phase 0).
+[ai]
+binding = "AI"
+
+[[kv_namespaces]]
+binding = "DEDUPE"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[r2_buckets]]
+binding = "AUDIO"
+bucket_name = "idea-capture-audio"
+
+# Producer: bound as env.IDEA_QUEUE inside the webhook handler.
+[[queues.producers]]
+binding = "IDEA_QUEUE"
+queue = "idea-capture"
+
+# Consumer: max_retries 3 per the failure-handling spec.
+[[queues.consumers]]
+queue = "idea-capture"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
+max_concurrency = 4
+
+[vars]
+# Transcription provider: workersai | groq | deepgram
+TRANSCRIBE_PROVIDER = "workersai"
