@@ -41,13 +41,16 @@ function buildCaf(packets: Uint8Array[], formatId = 'opus'): Uint8Array {
     }
     sizes.push(...bytes);
   }
-  const pakt = new Uint8Array(32 + sizes.length);
+  // CAFPacketTableHeader per Apple's spec: 8 + 8 + 4 + 4 = 24 bytes, then the
+  // variable-length packet descriptions. Getting this size wrong lands the
+  // reader mid-table and produces "truncated varint".
+  const pakt = new Uint8Array(24 + sizes.length);
   const pv = new DataView(pakt.buffer);
-  pv.setBigInt64(0, BigInt(packets.length));
-  pv.setBigInt64(8, BigInt(packets.length * 960));
-  pv.setInt32(16, 312); // priming frames
-  pv.setInt32(20, 0);
-  pakt.set(sizes, 32);
+  pv.setBigInt64(0, BigInt(packets.length));       // mNumberPackets
+  pv.setBigInt64(8, BigInt(packets.length * 960)); // mNumberValidFrames
+  pv.setInt32(16, 312);                            // mPrimingFrames
+  pv.setInt32(20, 0);                              // mRemainderFrames
+  pakt.set(sizes, 24);
   chunk('pakt', pakt);
 
   const audio = packets.reduce((n, p) => n + p.length, 0);

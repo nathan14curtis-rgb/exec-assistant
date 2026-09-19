@@ -45,8 +45,17 @@ test/
 Apple voice notes arrive as `.caf` (Core Audio Format, Opus codec), and Workers
 cannot run ffmpeg.
 
-**Status: not yet verified against a real voice note.** Nobody has sent one to
-the line from this environment, so the format spike has not been run end to end.
+**Status: partly verified.** A real iMessage voice note has now reached the
+pipeline. It arrived as CAF, confirming the premise, and exercised the remux
+path — which failed on a parser bug: the CAF packet table header is 24 bytes
+(`mNumberPackets` + `mNumberValidFrames` as SInt64, `mPrimingFrames` +
+`mRemainderFrames` as SInt32), not 32. Reading from the wrong offset landed
+mid-table and raised `CAF: truncated varint in packet table`. Fixed, with a
+regression test that reproduces that exact error against the old offset.
+
+Still unconfirmed: whether Workers AI accepts the remuxed Ogg Opus and returns
+an accurate transcript.
+
 The code is built so the spike is a config change, not a rewrite:
 
 - `src/transcribe/index.ts` defines `Transcriber` — `transcribe(bytes, mime)`
