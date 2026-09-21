@@ -11,6 +11,9 @@
 
 const MAGIC_CAF = 0x63616666; // 'caff'
 
+/** mNumberPackets + mNumberValidFrames (SInt64) + mPriming/mRemainderFrames (SInt32). */
+const PACKET_TABLE_HEADER_SIZE = 24;
+
 export function isCaf(bytes: Uint8Array): boolean {
   if (bytes.length < 8) return false;
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -103,7 +106,9 @@ export function parseCaf(bytes: Uint8Array): CafParsed {
     // after every size; we only need the sizes.
     const hasDurations = desc.framesPerPacket === 0;
     const sizes: number[] = [];
-    let p = 32;
+    // CAFPacketTableHeader is 24 bytes: two SInt64 counts plus two SInt32
+    // frame counts. The variable-length descriptions start right after it.
+    let p = PACKET_TABLE_HEADER_SIZE;
     for (let i = 0; i < numPackets; i++) {
       const r = readVarint(pakt, p);
       sizes.push(r.value);
