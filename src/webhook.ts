@@ -1,4 +1,11 @@
-import type { Env, IdeaJob } from './types';
+import type { CaptureJob, Env } from './types';
+import { timingSafeEqual } from './auth';
+
+/**
+ * Sendblue adapter: turns an inbound-message webhook into a CaptureJob.
+ * Everything channel-specific (signing secret, allowlist, echo filtering)
+ * stays here so the consumer never has to know where a capture came from.
+ */
 
 /** Shape of the Sendblue inbound-message webhook body (fields we care about). */
 export interface SendblueWebhookBody {
@@ -14,13 +21,7 @@ export interface SendblueWebhookBody {
   message_type?: string;
 }
 
-/** Constant-time string compare so the secret can't be probed byte by byte. */
-export function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-}
+export { timingSafeEqual };
 
 /** Normalize a phone number to digits-only so +1 555… and 1555… compare equal. */
 export function normalizeNumber(n: string | undefined | null): string {
@@ -30,7 +31,7 @@ export function normalizeNumber(n: string | undefined | null): string {
 export type WebhookOutcome =
   | { action: 'reject'; status: 401; reason: string }
   | { action: 'ignore'; reason: string }
-  | { action: 'enqueue'; job: IdeaJob };
+  | { action: 'enqueue'; job: CaptureJob };
 
 /**
  * Pure decision function — no I/O except the dedupe lookup, which is injected
@@ -46,7 +47,7 @@ export async function decideWebhook(
     return { action: 'reject', status: 401, reason: 'bad signing secret' };
   }
 
-  // Outbound echoes and delivery-status callbacks are not ideas.
+  // Outbound echoes and delivery-status callbacks are not captures.
   if (body.is_outbound === true) return { action: 'ignore', reason: 'outbound' };
 
   const from = normalizeNumber(body.from_number);
@@ -66,10 +67,12 @@ export async function decideWebhook(
   return {
     action: 'enqueue',
     job: {
-      messageId,
-      content,
+      channel: 'sendblue',
+      sourceId: messageId,
+      text: content,
       mediaUrl,
-      dateSent: body.date_sent ?? new Date().toISOString(),
+      receivedAt: body.date_sent ?? new Date().toISOString(),
+      notify: true,
     },
   };
 }
@@ -87,7 +90,7 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
   const secret = request.headers.get('sb-signing-secret');
 
   // Claim the message id in KV as part of the check: whichever delivery writes
-  // first wins, so a retried webhook can never produce a second row.
+  // first wins, so a retried webhook can never produce a second capture.
   const seen = async (key: string) => {
     const kvKey = `msg:${key}`;
     if ((await env.DEDUPE.get(kvKey)) !== null) return true;
@@ -107,8 +110,8 @@ export async function handleWebhook(request: Request, env: Env): Promise<Respons
     });
   }
 
-  await env.IDEA_QUEUE.send(outcome.job);
-  return new Response(JSON.stringify({ ok: true, queued: outcome.job.messageId }), {
+  await env.CAPTURE_QUEUE.send(outcome.job);
+  return new Response(JSON.stringify({ ok: true, queued: outcome.job.sourceId }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });

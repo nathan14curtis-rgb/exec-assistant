@@ -4,3 +4,7 @@ dist/
 .dev.vars
 *.log
 .DS_Store
+migrations/data/
+key.pem
+api_token.txt
+preview/out.html

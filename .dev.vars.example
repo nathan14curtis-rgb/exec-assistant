@@ -1,0 +1,14 @@
+# Copy this file to `.dev.vars` and fill in the two values below.
+# `.dev.vars` is gitignored. It holds a PATH to your Google key, not the key.
+
+# 1. Path to the service-account JSON you downloaded from Google Cloud.
+#    Windows: use forward slashes or double backslashes.
+#    Google Cloud Console -> IAM & Admin -> Service Accounts -> Keys -> Add key -> JSON
+GOOGLE_SA_JSON=C:/Users/Natha/Downloads/your-project-abc123.json
+
+# 2. From your sheet's URL:
+#    docs.google.com/spreadsheets/d/THIS_PART/edit
+SHEET_ID=
+
+# Optional — the tab holding the old rows. Defaults to Ideas.
+# LEGACY_TAB=Ideas

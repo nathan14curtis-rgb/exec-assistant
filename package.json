@@ -8,7 +8,12 @@
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "setup-sheet": "tsx scripts/setup-sheet.ts"
+    "setup-sheet": "tsx scripts/setup-sheet.ts",
+    "migrate:sql": "tsx scripts/migrate-sheets-to-d1.ts",
+    "d1:migrate": "wrangler d1 migrations apply idea-capture --remote",
+    "d1:migrate:local": "wrangler d1 migrations apply idea-capture --local",
+    "migrate:apply": "wrangler d1 execute idea-capture --remote --file=migrations/data/legacy-ideas.sql",
+    "preview": "tsx preview/render.ts preview/out.html"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250204.0",
