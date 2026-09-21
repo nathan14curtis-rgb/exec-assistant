@@ -2,6 +2,7 @@ import type { CaptureJob, Env } from './types';
 import { handleWebhook } from './webhook';
 import { handleCapture } from './capture';
 import { handleApi } from './api';
+import { handleDashboard } from './dashboard';
 import { handleQueue } from './consumer';
 
 export default {
@@ -28,6 +29,15 @@ export default {
 
     if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
       return handleApi(request, env, url);
+    }
+
+    // The dashboard: server-rendered, form-driven, behind Access.
+    if (url.pathname === '/inbox' || url.pathname.startsWith('/inbox/')) {
+      return handleDashboard(request, env, url);
+    }
+
+    if (url.pathname === '/') {
+      return Response.redirect(new URL('/inbox', url).toString(), 302);
     }
 
     return new Response('not found', { status: 404 });

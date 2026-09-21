@@ -7,3 +7,4 @@ dist/
 migrations/data/
 key.pem
 api_token.txt
+preview/out.html

@@ -5,8 +5,8 @@ Text or send an iMessage voice note to a dedicated Sendblue line (or POST to
 transcribes it with Deepgram Nova-3, enriches it with Claude, stores the
 result in D1, mirrors it to a Google Sheet, and texts back a receipt.
 
-**D1 is the source of truth. The Sheet is a one-way mirror.** Edit through the
-API (and, soon, the `/inbox` dashboard) — edits made in the Sheet do not flow
+**D1 is the source of truth. The Sheet is a one-way mirror.** Correct things in
+the `/inbox` dashboard or through the API — edits made in the Sheet do not flow
 back.
 
 ```
@@ -41,12 +41,20 @@ Schema: `migrations/0001_init.sql`. Mirror tabs: `Captures`, `Items`,
 
 ```
 src/
-  index.ts            router: /webhook /capture /api/* /health
+  index.ts            router: /inbox /webhook /capture /api/* /health
   webhook.ts          Sendblue adapter → CaptureJob
   capture.ts          generic adapter (bearer token) → CaptureJob
   consumer.ts         queue consumer: archive → transcribe → enrich → store
   api.ts              JSON API for the drafting task and the dashboard
   auth.ts             bearer token + Cloudflare Access JWT verification
+  dashboard/
+    index.ts          /inbox routes, auth, filters
+    page.ts           page shell, filter rail, empty states
+    view.ts           capture cards, item rows, action drawer, transcript
+    actions.ts        move / done / edit / split / delete / re-run / keep
+    design.ts         bucket glyphs and labels
+    styles.ts         the stylesheet
+    html.ts           escaping template tag
   store/
     index.ts          Store interface — everything persists through this
     d1.ts             D1 implementation (source of truth)
@@ -61,8 +69,37 @@ migrations/           D1 schema (wrangler d1 migrations)
 scripts/
   setup-sheet.ts      creates the mirror tabs + headers
   migrate-sheets-to-d1.ts  legacy Ideas/Themes tabs → SQL
+preview/render.ts     renders the dashboard to a file with fake data
 test/
 ```
+
+## The dashboard
+
+`/inbox` is server-rendered HTML with no framework and no build step. Every
+action is a form POST that redirects back to the same filter and scroll
+position; the only client-side behaviour is `<details>` toggling.
+
+- **A capture is the card, its items are the ink.** The header is the lightest
+  thing on it. Two or more items get a 2px spine in the left gutter; one item
+  gets none, so a single-item capture reads as one record.
+- **Actions are in-card, never a detail view.** The whole item row is a
+  `<summary>`; tapping it opens a drawer holding the six bucket targets, done,
+  edit, area/due, split and delete. Zero page loads to reach an action, one to
+  commit it — and correction is the job.
+- **Split** renders the body as one submit button per word: tapping a word says
+  "the second thought starts here", and the tail becomes a new item on the same
+  capture.
+- **The transcript** sits at the foot of the card, collapsed. When the repair
+  step lands it shows the corrected text with the untouched original as a second
+  disclosure inside it; the raw transcript is never overwritten.
+- **Buckets** are told apart by glyph silhouette first, the word in mono caps
+  second, and hue last, so they survive greyscale and both themes.
+- Phone is one column; at 900px a 220px filter rail replaces the chip row and
+  the bucket grid goes six across.
+
+`npm run preview` renders the page to `preview/out.html` with representative
+fake data — a processing capture, a three-item one, a failure and a done item —
+so layout changes can be checked in a browser without deploying.
 
 ## Transcription
 
@@ -78,6 +115,7 @@ All routes need either `Authorization: Bearer $API_TOKEN` (machines) or a
 Cloudflare Access login (browser; see below).
 
 ```
+GET   /inbox                          the dashboard
 GET   /api/captures?limit=50
 GET   /api/captures/:id               capture + its items
 GET   /api/captures/:id/audio         archived audio
@@ -138,14 +176,16 @@ put the same keys in `.dev.vars`.
 
 ### 4. Cloudflare Access (browser auth for `/api` and the dashboard)
 
-1. Zero Trust → Access → Applications → add a self-hosted app for
-   `<worker>.workers.dev/api/*` (add `/inbox` when it ships), policy: allow your email.
+1. Zero Trust → Access → Applications → add self-hosted apps for
+   `<worker>.workers.dev/inbox` and `/api/*`, policy: allow your email.
 2. Copy the application's **AUD tag** and your team domain
    (`<team>.cloudflareaccess.com`) into `ACCESS_AUD` / `ACCESS_TEAM_DOMAIN` in
    `wrangler.toml`.
 
-Bearer-token calls bypass Access, so keep the token secret. If both vars are
-empty, only the bearer token works.
+Bearer-token calls bypass Access, so keep the token secret. **Until Access is
+set up**, `/inbox` shows a token form instead: sign in once with `API_TOKEN` and
+it stores an HttpOnly, Secure, `SameSite=Lax` cookie scoped to `/inbox`. Access
+is the better front door — it is free and keeps the token out of the browser.
 
 ### 5. Deploy
 
@@ -199,8 +239,8 @@ npm run dev              # wrangler dev
 
 ## Roadmap
 
-1. ~~D1 + mirror + generic capture + API~~ (this)
-2. `/inbox` dashboard — read **and** write (move bucket, mark done, split, re-run)
+1. ~~D1 + mirror + generic capture + API~~
+2. ~~`/inbox` dashboard — read **and** write~~ (this)
 3. Segment → classify → enrich per bucket; intent gate (capture / question / noise);
    dedupe across buckets; receipt lists titles; `undo`
 4. Google Tasks sink with sync-back cron

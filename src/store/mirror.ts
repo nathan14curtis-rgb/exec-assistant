@@ -96,6 +96,14 @@ export class SheetsMirror {
     }
   }
 
+  /** A deleted item keeps its row, with status set to `deleted`. */
+  async markItemDeleted(id: string): Promise<void> {
+    const n = await this.findRow('Items', id);
+    if (n === null) return;
+    const col = String.fromCharCode(65 + ITEMS_HEADERS.indexOf('status'));
+    await updateValues(this.env, `Items!${col}${n}`, [['deleted']]);
+  }
+
   upsertTheme(t: Theme): Promise<void> {
     return this.upsertRow('Themes', THEMES_HEADERS, [t.theme, t.description, String(t.idea_count)]);
   }

@@ -42,8 +42,13 @@ export interface Store {
   createItem(item: Item, content?: ContentIdea): Promise<void>;
   getItem(id: string): Promise<ItemWithContent | null>;
   listItems(filter: ItemFilter): Promise<ItemWithContent[]>;
+  /** Items for several captures in one query — the inbox would otherwise N+1. */
+  listItemsForCaptures(captureIds: string[]): Promise<ItemWithContent[]>;
   updateItem(id: string, patch: Partial<Item>): Promise<void>;
   updateContentIdea(itemId: string, patch: Partial<ContentIdea>): Promise<void>;
+  deleteItem(id: string): Promise<void>;
+  /** Open-item counts per bucket, for the filter rail. */
+  countItemsByBucket(): Promise<Record<string, number>>;
 
   getThemes(): Promise<Theme[]>;
   /** Insert or bump idea_count; atomic in D1 so concurrent consumers can't race. */
@@ -62,6 +67,11 @@ export function getStore(env: Env): Store {
   const d1 = new D1Store(env.DB);
   cached = env.SHEET_ID ? new MirroredStore(d1, new SheetsMirror(env)) : d1;
   return cached;
+}
+
+/** Test hook: install a stand-in store, bypassing D1 and the mirror. */
+export function setStore(store: Store): void {
+  cached = store;
 }
 
 /** Test hook. */

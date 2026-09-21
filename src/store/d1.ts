@@ -139,6 +139,31 @@ export class D1Store implements Store {
     return results.map(splitJoinedRow);
   }
 
+  async listItemsForCaptures(captureIds: string[]): Promise<ItemWithContent[]> {
+    if (!captureIds.length) return [];
+    const holes = captureIds.map(() => '?').join(', ');
+    const { results } = await this.db
+      .prepare(`${ITEM_SELECT} WHERE i.capture_id IN (${holes}) ORDER BY i.created_at ASC`)
+      .bind(...captureIds)
+      .all<JoinedRow>();
+    return results.map(splitJoinedRow);
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    // content_ideas references items, so it has to go first.
+    await this.db.batch([
+      this.db.prepare('DELETE FROM content_ideas WHERE item_id = ?').bind(id),
+      this.db.prepare('DELETE FROM items WHERE id = ?').bind(id),
+    ]);
+  }
+
+  async countItemsByBucket(): Promise<Record<string, number>> {
+    const { results } = await this.db
+      .prepare("SELECT bucket, COUNT(*) AS n FROM items WHERE status = 'open' GROUP BY bucket")
+      .all<{ bucket: string; n: number }>();
+    return Object.fromEntries(results.map((r) => [r.bucket, r.n]));
+  }
+
   async updateItem(id: string, patch: Partial<Item>): Promise<void> {
     const u = updateSql<Item>('items', ITEM_COLUMNS, { ...patch, updated_at: new Date().toISOString() }, 'id', id);
     if (u) await this.db.prepare(u.sql).bind(...u.params).run();

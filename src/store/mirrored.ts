@@ -59,6 +59,21 @@ export class MirroredStore implements Store {
     return this.primary.listItems(filter);
   }
 
+  listItemsForCaptures(captureIds: string[]): Promise<ItemWithContent[]> {
+    return this.primary.listItemsForCaptures(captureIds);
+  }
+
+  async deleteItem(id: string): Promise<void> {
+    await this.primary.deleteItem(id);
+    // The mirror is append/update only; a deleted row is marked, not removed,
+    // so the Sheet stays a record of what existed.
+    await this.reflect(`delete ${id}`, () => this.mirror.markItemDeleted(id));
+  }
+
+  countItemsByBucket(): Promise<Record<string, number>> {
+    return this.primary.countItemsByBucket();
+  }
+
   async updateItem(id: string, patch: Partial<Item>): Promise<void> {
     await this.primary.updateItem(id, patch);
     await this.reflectItem(id);
