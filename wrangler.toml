@@ -19,7 +19,7 @@ bucket_name = "idea-capture-audio"
 [[d1_databases]]
 binding = "DB"
 database_name = "idea-capture"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "ca0b3d4d-4604-42a2-b68b-2a8fdb775442"
 migrations_dir = "migrations"
 
 # Producer: bound as env.CAPTURE_QUEUE inside the inbound adapters.
