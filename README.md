@@ -45,9 +45,30 @@ test/
 Apple voice notes arrive as `.caf` (Core Audio Format, Opus codec), and Workers
 cannot run ffmpeg.
 
-**Status: not yet verified against a real voice note.** Nobody has sent one to
-the line from this environment, so the format spike has not been run end to end.
-The code is built so the spike is a config change, not a rewrite:
+**Decision: Workers AI Whisper, fed a remuxed Ogg Opus stream.** Verified
+end to end against real iMessage voice notes.
+
+What the spike established:
+
+- Voice notes arrive as **CAF containing Opus**, so the remux path is the one
+  that matters in practice.
+- **Workers AI does not accept raw CAF**, hence `acceptsCaf: false` on that
+  provider — a `.caf` file is remuxed before it is sent.
+- **`cafToOggOpus()` output is accepted**, and the returned transcript is
+  accurate. No ffmpeg, no Cloudflare Container, no third-party
+  transcription key.
+- Groq and Deepgram remain implemented and switchable, but were not needed.
+
+One bug surfaced during the spike and is worth remembering when touching the
+parser: `CAFPacketTableHeader` is **24 bytes** (`mNumberPackets` +
+`mNumberValidFrames` as SInt64, then `mPrimingFrames` + `mRemainderFrames` as
+SInt32), not 32. Reading the packet descriptions from the wrong offset lands
+mid-table and raises `CAF: truncated varint in packet table`. The synthetic
+CAF builder in `test/caf.test.ts` follows Apple's spec exactly so that this
+case stays covered — if that builder drifts, the test can agree with a broken
+parser and pass while real files fail.
+
+The provider stays swappable if that ever changes:
 
 - `src/transcribe/index.ts` defines `Transcriber` — `transcribe(bytes, mime)`
   plus an `acceptsCaf` flag — and picks the implementation from the
