@@ -13,25 +13,25 @@ export interface Transcriber {
 }
 
 export function getTranscriber(env: Env): Transcriber {
-  switch ((env.TRANSCRIBE_PROVIDER || 'workersai').toLowerCase()) {
+  switch ((env.TRANSCRIBE_PROVIDER || 'deepgram').toLowerCase()) {
     case 'groq':
       return {
         name: 'groq',
         acceptsCaf: false,
         transcribe: (b, m) => transcribeGroq(env, b, m),
       };
-    case 'deepgram':
-      return {
-        name: 'deepgram',
-        acceptsCaf: true,
-        transcribe: (b, m) => transcribeDeepgram(env, b, m),
-      };
     case 'workersai':
-    default:
       return {
         name: 'workersai',
         acceptsCaf: false,
         transcribe: (b, m) => transcribeWorkersAi(env, b, m),
+      };
+    case 'deepgram':
+    default:
+      return {
+        name: 'deepgram',
+        acceptsCaf: true,
+        transcribe: (b, m) => transcribeDeepgram(env, b, m),
       };
   }
 }

@@ -50,10 +50,12 @@ describe('decideWebhook', () => {
     expect(out).toEqual({
       action: 'enqueue',
       job: {
-        messageId: 'msg-1',
-        content: 'an idea about pricing',
+        channel: 'sendblue',
+        sourceId: 'msg-1',
+        text: 'an idea about pricing',
         mediaUrl: null,
-        dateSent: '2026-09-18T12:00:00Z',
+        receivedAt: '2026-09-18T12:00:00Z',
+        notify: true,
       },
     });
   });

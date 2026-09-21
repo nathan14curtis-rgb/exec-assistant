@@ -1,5 +1,7 @@
-import type { Env, IdeaJob } from './types';
+import type { CaptureJob, Env } from './types';
 import { handleWebhook } from './webhook';
+import { handleCapture } from './capture';
+import { handleApi } from './api';
 import { handleQueue } from './consumer';
 
 export default {
@@ -12,15 +14,26 @@ export default {
       });
     }
 
+    // Sendblue adapter.
     if (url.pathname === '/webhook') {
       if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
       return handleWebhook(request, env);
     }
 
+    // Generic adapter: any authenticated client.
+    if (url.pathname === '/capture') {
+      if (request.method !== 'POST') return new Response('method not allowed', { status: 405 });
+      return handleCapture(request, env);
+    }
+
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/')) {
+      return handleApi(request, env, url);
+    }
+
     return new Response('not found', { status: 404 });
   },
 
-  async queue(batch: MessageBatch<IdeaJob>, env: Env): Promise<void> {
+  async queue(batch: MessageBatch<CaptureJob>, env: Env): Promise<void> {
     await handleQueue(batch, env);
   },
-} satisfies ExportedHandler<Env, IdeaJob>;
+} satisfies ExportedHandler<Env, CaptureJob>;

@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
-# Workers AI — default transcription provider (see README Phase 0).
+# Workers AI — fallback transcription provider (TRANSCRIBE_PROVIDER = "workersai").
 [ai]
 binding = "AI"
 
@@ -15,9 +15,16 @@ id = "30bb89b028224d60aa448f0e513aaeec"
 binding = "AUDIO"
 bucket_name = "idea-capture-audio"
 
-# Producer: bound as env.IDEA_QUEUE inside the webhook handler.
+# Source of truth. Create with `npx wrangler d1 create idea-capture` and paste the id.
+[[d1_databases]]
+binding = "DB"
+database_name = "idea-capture"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+# Producer: bound as env.CAPTURE_QUEUE inside the inbound adapters.
 [[queues.producers]]
-binding = "IDEA_QUEUE"
+binding = "CAPTURE_QUEUE"
 queue = "idea-capture"
 
 # Consumer: max_retries 3 per the failure-handling spec.
@@ -29,5 +36,13 @@ max_retries = 3
 max_concurrency = 4
 
 [vars]
-# Transcription provider: workersai | groq | deepgram
-TRANSCRIBE_PROVIDER = "workersai"
+# Transcription provider: deepgram | workersai | groq
+TRANSCRIBE_PROVIDER = "deepgram"
+# Comma-separated vocabulary for Deepgram keyterm prompting. Leave empty for the built-in list.
+TRANSCRIBE_KEYTERMS = ""
+# Used for any "by Friday"-style date parsing.
+USER_TZ = "America/Denver"
+# Cloudflare Access protects /api/* (and the dashboard when it lands).
+# Leave both empty to allow bearer-token access only.
+ACCESS_TEAM_DOMAIN = ""
+ACCESS_AUD = ""

@@ -1,7 +1,8 @@
 /**
- * One-time Sheet bootstrap: creates the Ideas / Themes / Tags / Log tabs,
- * writes header rows, and seeds the tag vocabulary. Safe to re-run — existing
- * tabs and non-empty headers are left alone.
+ * Sheet bootstrap for the mirror tabs: Captures / Items / ContentIdeas /
+ * Themes. Writes header rows only. Safe to re-run — existing tabs and
+ * non-empty headers are left alone. Legacy tabs (Ideas, Tags, Log) are not
+ * touched; rename Ideas to Ideas_archive by hand after migrating.
  *
  *   GOOGLE_SA_EMAIL=... GOOGLE_SA_PRIVATE_KEY="$(cat key.pem)" SHEET_ID=... \
  *     npm run setup-sheet
@@ -12,37 +13,23 @@ const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const API = 'https://sheets.googleapis.com/v4/spreadsheets';
 
-const IDEAS_HEADERS = [
-  'id', 'created_at', 'source', 'raw_text', 'transcript', 'audio_r2_key', 'title',
-  'cleaned_idea', 'type', 'theme', 'tags', 'suggested_new_tags', 'audience_pain',
-  'content_format', 'lockii_fit', 'lockii_fit_reason', 'possible_duplicate_of',
-  'status', 'titles_draft', 'hooks_draft', 'clip_moments_draft',
-  'cta_deliverable_draft', 'picked_on', 'posted_url', 'notes', 'error',
+// Mirror tabs. D1 is the source of truth; the Worker writes these one-way.
+// Keep in step with src/store/mirror.ts.
+const CAPTURES_HEADERS = [
+  'id', 'created_at', 'channel', 'input_kind', 'status', 'item_count', 'raw_text',
+  'transcript_raw', 'transcript_repaired', 'audio_r2_key', 'error',
 ];
-const THEMES_HEADERS = ['theme', 'description', 'idea_count', 'created_at'];
-const TAGS_HEADERS = ['tag', 'description'];
-const LOG_HEADERS = ['timestamp', 'message_id', 'level', 'event', 'detail'];
-
-const SEED_TAGS: [string, string][] = [
-  ['branding', 'Brand identity, positioning, naming'],
-  ['ad-creative', 'Ads, creative testing, copy'],
-  ['graphic-design', 'Visual design work and assets'],
-  ['logo', 'Logo design and iterations'],
-  ['physical-space', 'The bay, layout, build-out, signage'],
-  ['customer-comms', 'Messaging customers, support, expectations'],
-  ['booking', 'Reservations, scheduling, availability'],
-  ['access-control', 'Locks, doors, codes, contactless entry'],
-  ['pricing', 'Rates, packages, discounts, margins'],
-  ['unstaffed-ops', 'Running the business without staff on site'],
-  ['shrinkage', 'Theft, damage, loss, abuse of the space'],
-  ['hiring', 'Finding and managing people'],
-  ['growth-pains', 'Scaling problems and bottlenecks'],
-  ['expansion', 'New locations, new markets'],
-  ['capital', 'Funding, loans, cash flow'],
-  ['mistakes', 'Things that went wrong and lessons learned'],
-  ['numbers', 'Revenue, costs, metrics, unit economics'],
-  ['tools-stack', 'Software and hardware used to run the business'],
+const ITEMS_HEADERS = [
+  'id', 'capture_id', 'created_at', 'bucket', 'status', 'area', 'title', 'body',
+  'due_at', 'related_item_id', 'data', 'updated_at',
 ];
+const CONTENT_HEADERS = [
+  'item_id', 'title', 'stage', 'theme', 'type', 'tags', 'suggested_new_tags',
+  'cleaned_idea', 'audience_pain', 'content_format', 'lockii_fit',
+  'lockii_fit_reason', 'possible_duplicate_of', 'titles_draft', 'hooks_draft',
+  'clip_moments_draft', 'cta_deliverable_draft', 'picked_on', 'posted_url', 'notes',
+];
+const THEMES_HEADERS = ['theme', 'description', 'idea_count'];
 
 function required(name: string): string {
   const value = process.env[name];
@@ -107,10 +94,10 @@ async function main(): Promise<void> {
   );
 
   const wanted: [string, string[]][] = [
-    ['Ideas', IDEAS_HEADERS],
+    ['Captures', CAPTURES_HEADERS],
+    ['Items', ITEMS_HEADERS],
+    ['ContentIdeas', CONTENT_HEADERS],
     ['Themes', THEMES_HEADERS],
-    ['Tags', TAGS_HEADERS],
-    ['Log', LOG_HEADERS],
   ];
 
   const missing = wanted.filter(([title]) => !existing.has(title));
@@ -136,17 +123,6 @@ async function main(): Promise<void> {
       body: JSON.stringify({ values: [headers] }),
     });
     console.log(`${title}: wrote headers`);
-  }
-
-  const tagRows = await api('/values/Tags!A2:B');
-  if (!tagRows.values?.length) {
-    await api('/values/Tags!A:B:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS', {
-      method: 'POST',
-      body: JSON.stringify({ values: SEED_TAGS }),
-    });
-    console.log(`Tags: seeded ${SEED_TAGS.length} tags`);
-  } else {
-    console.log('Tags: already seeded');
   }
 
   console.log('done');

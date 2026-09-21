@@ -1,5 +1,5 @@
 import type { Env, Enrichment } from './types';
-import type { Theme } from './sheets';
+import type { Theme } from './store';
 
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const MODEL = 'claude-haiku-4-5-20251001';
