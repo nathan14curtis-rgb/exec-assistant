@@ -4,10 +4,12 @@
  * non-empty headers are left alone. Legacy tabs (Ideas, Tags, Log) are not
  * touched; rename Ideas to Ideas_archive by hand after migrating.
  *
- *   GOOGLE_SA_EMAIL=... GOOGLE_SA_PRIVATE_KEY="$(cat key.pem)" SHEET_ID=... \
- *     npm run setup-sheet
+ * Reads its config from `.dev.vars` — see .dev.vars.example.
+ *
+ *   npm run setup-sheet
  */
 import { createSign } from 'node:crypto';
+import { loadSetupConfig } from './config';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
@@ -31,33 +33,19 @@ const CONTENT_HEADERS = [
 ];
 const THEMES_HEADERS = ['theme', 'description', 'idea_count'];
 
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set`);
-  return value;
-}
-
-const SA_EMAIL = required('GOOGLE_SA_EMAIL');
-const SA_KEY = required('GOOGLE_SA_PRIVATE_KEY').replace(/\\n/g, '\n');
-const SHEET_ID = required('SHEET_ID');
-
 function b64url(input: Buffer | string): string {
-  return Buffer.from(input)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
+  return Buffer.from(input).toString('base64url');
 }
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(saEmail: string, saKey: string): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const header = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claims = b64url(
-    JSON.stringify({ iss: SA_EMAIL, scope: SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 }),
+    JSON.stringify({ iss: saEmail, scope: SCOPE, aud: TOKEN_URL, iat: now, exp: now + 3600 }),
   );
   const signer = createSign('RSA-SHA256');
   signer.update(`${header}.${claims}`);
-  const signature = b64url(signer.sign(SA_KEY));
+  const signature = b64url(signer.sign(saKey));
 
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
@@ -72,8 +60,10 @@ async function getAccessToken(): Promise<string> {
 }
 
 let token = '';
+let sheetId = '';
+
 async function api(path: string, init: RequestInit = {}): Promise<any> {
-  const res = await fetch(`${API}/${SHEET_ID}${path}`, {
+  const res = await fetch(`${API}/${sheetId}${path}`, {
     ...init,
     headers: {
       authorization: `Bearer ${token}`,
@@ -85,10 +75,18 @@ async function api(path: string, init: RequestInit = {}): Promise<any> {
   return res.json();
 }
 
+/** A1 range end column for N headers (all our tabs are well under 26 wide). */
+function lastColumn(n: number): string {
+  return String.fromCharCode(64 + n);
+}
+
 async function main(): Promise<void> {
-  token = await getAccessToken();
+  const cfg = loadSetupConfig();
+  sheetId = cfg.sheetId;
+  token = await getAccessToken(cfg.saEmail, cfg.saKey);
 
   const meta = await api('');
+  console.log(`sheet: ${meta.properties?.title ?? '(untitled)'}`);
   const existing = new Set<string>(
     (meta.sheets ?? []).map((s: any) => s.properties.title as string),
   );
@@ -112,7 +110,7 @@ async function main(): Promise<void> {
   }
 
   for (const [title, headers] of wanted) {
-    const range = `${title}!A1:${String.fromCharCode(64 + headers.length)}1`;
+    const range = `${title}!A1:${lastColumn(headers.length)}1`;
     const current = await api(`/values/${encodeURIComponent(range)}`);
     if (current.values?.[0]?.length) {
       console.log(`${title}: headers already present`);
@@ -125,10 +123,10 @@ async function main(): Promise<void> {
     console.log(`${title}: wrote headers`);
   }
 
-  console.log('done');
+  console.log('\ndone — the mirror will now find its tabs.');
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(`\n✘ ${err.message ?? err}\n`);
   process.exit(1);
 });

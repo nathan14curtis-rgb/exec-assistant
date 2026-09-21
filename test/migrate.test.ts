@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { legacyRowToSql, q, themeRowToSql } from '../scripts/migrate-sheets-to-d1';
+import { parseEnvFile } from '../scripts/config';
 
 const legacy = {
   id: 'IDEA-20260918-7K3', created_at: '2026-09-18T12:00:00Z', source: 'voice',
@@ -40,5 +41,25 @@ describe('migration SQL', () => {
     expect(themeRowToSql(['Pricing', 'Rates', '3', '2026-01-01'])).toBe(
       "INSERT OR IGNORE INTO themes (theme, description, idea_count, created_at) VALUES ('Pricing', 'Rates', 3, '2026-01-01');",
     );
+  });
+});
+
+describe('parseEnvFile', () => {
+  it('reads plain, quoted, exported and commented lines', () => {
+    const out = parseEnvFile([
+      '# a comment',
+      '',
+      'SHEET_ID=abc123',
+      'export LEGACY_TAB=Ideas',
+      'GOOGLE_SA_JSON="C:/Users/Natha/Downloads/key.json"',
+      "QUOTED='single'",
+      'no_equals_line',
+    ].join('\r\n'));
+    expect(out).toEqual({
+      SHEET_ID: 'abc123',
+      LEGACY_TAB: 'Ideas',
+      GOOGLE_SA_JSON: 'C:/Users/Natha/Downloads/key.json',
+      QUOTED: 'single',
+    });
   });
 });

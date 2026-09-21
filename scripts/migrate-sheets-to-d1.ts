@@ -1,12 +1,14 @@
 /**
  * One-time migration: legacy `Ideas` + `Themes` tabs → D1 SQL.
  *
- * Reads the Sheet with the service account and prints SQL to stdout. Nothing
- * is written anywhere by this script; you review the file, then apply it:
+ * Reads the Sheet with the service account and writes SQL to
+ * migrations/data/legacy-ideas.sql. Nothing is sent to D1 by this script —
+ * you review the file, then apply it:
  *
- *   GOOGLE_SA_EMAIL=... GOOGLE_SA_PRIVATE_KEY="$(cat key.pem)" SHEET_ID=... \
- *     npm run migrate:sql > migrations/data/legacy-ideas.sql
+ *   npm run migrate:sql
  *   npx wrangler d1 execute idea-capture --remote --file=migrations/data/legacy-ideas.sql
+ *
+ * Config comes from .dev.vars — see .dev.vars.example.
  *
  * Each legacy row becomes one capture + one content_idea item. The item keeps
  * the legacy IDEA-… id so anything that referenced it still resolves; the
@@ -14,6 +16,9 @@
  * IGNORE, so re-running is safe.
  */
 import { createSign } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { loadSetupConfig } from './config';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
@@ -27,12 +32,6 @@ const LEGACY_HEADERS = [
   'cta_deliverable_draft', 'picked_on', 'posted_url', 'notes', 'error',
 ] as const;
 type LegacyRow = Record<(typeof LEGACY_HEADERS)[number], string>;
-
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is not set`);
-  return value;
-}
 
 function b64url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url');
@@ -161,11 +160,10 @@ export function themeRowToSql(r: string[]): string {
   });
 }
 
+const OUT_FILE = 'migrations/data/legacy-ideas.sql';
+
 async function main(): Promise<void> {
-  const saEmail = required('GOOGLE_SA_EMAIL');
-  const saKey = required('GOOGLE_SA_PRIVATE_KEY').replace(/\\n/g, '\n');
-  const sheetId = required('SHEET_ID');
-  const legacyTab = process.env.LEGACY_TAB ?? 'Ideas';
+  const { saEmail, saKey, sheetId, legacyTab } = loadSetupConfig();
 
   const token = await getAccessToken(saEmail, saKey);
   const [ideaRows, themeRows] = await Promise.all([
@@ -178,27 +176,44 @@ async function main(): Promise<void> {
     'BEGIN TRANSACTION;',
   ];
 
-  let migrated = 0;
+  let ideas = 0;
+  let errored = 0;
   for (const raw of ideaRows) {
     if (!raw[0]?.trim()) continue;
     const row = Object.fromEntries(LEGACY_HEADERS.map((h, i) => [h, (raw[i] ?? '').trim()])) as LegacyRow;
     lines.push(...legacyRowToSql(row));
-    migrated++;
+    ideas++;
+    if (row.status === 'error') errored++;
   }
+
+  let themes = 0;
   for (const raw of themeRows) {
     if (!raw[0]?.trim()) continue;
     lines.push(themeRowToSql(raw));
+    themes++;
   }
   lines.push('COMMIT;');
 
-  process.stdout.write(lines.join('\n') + '\n');
-  process.stderr.write(`migrated ${migrated} ideas, ${themeRows.length} themes\n`);
+  if (!ideas && !themes) {
+    console.error(`\n✘ No rows found in "${legacyTab}!A2:Z" or "Themes!A2:D".`);
+    console.error('  Wrong tab name? Set LEGACY_TAB in .dev.vars.\n');
+    process.exit(1);
+  }
+
+  const out = resolve(process.cwd(), OUT_FILE);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, lines.join('\n') + '\n', 'utf8');
+
+  console.log(`read ${ideas} ideas (${errored} error rows -> capture only) and ${themes} themes`);
+  console.log(`wrote ${lines.length - 3} statements to ${OUT_FILE}`);
+  console.log('\nReview it, then apply:');
+  console.log(`  npx wrangler d1 execute idea-capture --remote --file=${OUT_FILE}`);
 }
 
 // Only run when executed directly, so tests can import the pure helpers.
 if (process.argv[1] && /migrate-sheets-to-d1/.test(process.argv[1])) {
   main().catch((err) => {
-    console.error(err);
+    console.error(`\n✘ ${err.message ?? err}\n`);
     process.exit(1);
   });
 }
