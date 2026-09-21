@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
+import { writeFileSync, unlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { legacyRowToSql, q, themeRowToSql } from '../scripts/migrate-sheets-to-d1';
-import { parseEnvFile } from '../scripts/config';
+import { loadEnvFile, parseEnvFile } from '../scripts/config';
 
 const legacy = {
   id: 'IDEA-20260918-7K3', created_at: '2026-09-18T12:00:00Z', source: 'voice',
@@ -61,5 +64,30 @@ describe('parseEnvFile', () => {
       GOOGLE_SA_JSON: 'C:/Users/Natha/Downloads/key.json',
       QUOTED: 'single',
     });
+  });
+});
+
+describe('loadEnvFile precedence', () => {
+  const file = join(tmpdir(), `dev-vars-${Date.now()}`);
+  afterEach(() => { try { unlinkSync(file); } catch {} });
+
+  it('overrides a stale environment variable', () => {
+    writeFileSync(file, 'SHEET_ID=real-id\n');
+    process.env.SHEET_ID = 'your-sheet-id'; // left over from an earlier shell
+    loadEnvFile(file);
+    expect(process.env.SHEET_ID).toBe('real-id');
+    delete process.env.SHEET_ID;
+  });
+
+  it('leaves an existing value alone when the file entry is blank', () => {
+    writeFileSync(file, 'SHEET_ID=\n');
+    process.env.SHEET_ID = 'set-elsewhere';
+    loadEnvFile(file);
+    expect(process.env.SHEET_ID).toBe('set-elsewhere');
+    delete process.env.SHEET_ID;
+  });
+
+  it('is a no-op when the file is missing', () => {
+    expect(() => loadEnvFile(join(tmpdir(), 'definitely-not-here'))).not.toThrow();
   });
 });

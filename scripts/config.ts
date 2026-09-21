@@ -1,17 +1,19 @@
 /**
  * Local config for the one-off setup scripts (not used by the Worker).
  *
- * Values come from `.dev.vars` in the repo root, falling back to real
- * environment variables. `.dev.vars` is gitignored — it holds a path to your
- * Google service-account key, never the key itself.
+ * Values come from `.dev.vars` in the repo root, which WINS over any
+ * same-named environment variable. That is the opposite of the usual dotenv
+ * precedence, on purpose: `.dev.vars` is the file you just edited, whereas a
+ * shell variable is usually left over from an earlier session and silently
+ * shadows it. `.dev.vars` is gitignored — it holds a path to your Google
+ * service-account key, never the key itself.
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 /**
  * Parse a KEY=value file. Handles quoted values, `export ` prefixes, comments
- * and blank lines. Existing environment variables win, so you can override a
- * single value inline without editing the file.
+ * and blank lines.
  */
 export function parseEnvFile(text: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -33,12 +35,21 @@ export function parseEnvFile(text: string): Record<string, string> {
   return out;
 }
 
-/** Load `.dev.vars` into process.env without clobbering what's already set. */
+/**
+ * Load `.dev.vars` into process.env, overriding anything already set and
+ * reporting each value it shadowed — a stale `$env:SHEET_ID` from an earlier
+ * shell is otherwise invisible and very confusing.
+ */
 export function loadEnvFile(file = '.dev.vars'): void {
   const path = resolve(process.cwd(), file);
   if (!existsSync(path)) return;
   for (const [k, v] of Object.entries(parseEnvFile(readFileSync(path, 'utf8')))) {
-    if (process.env[k] === undefined) process.env[k] = v;
+    if (!v) continue; // an empty line in the file shouldn't erase a real value
+    const shadowed = process.env[k];
+    if (shadowed !== undefined && shadowed !== v) {
+      console.log(`${k}: using .dev.vars (ignoring the environment variable already set)`);
+    }
+    process.env[k] = v;
   }
 }
 
@@ -64,7 +75,7 @@ export function loadSetupConfig(): SetupConfig {
   loadEnvFile();
 
   const sheetId = process.env.SHEET_ID?.trim();
-  if (!sheetId) fail('SHEET_ID is not set.');
+  if (!sheetId) fail('SHEET_ID is not set — fill it in in .dev.vars.');
   if (/^your-|^the-real-/.test(sheetId)) fail(`SHEET_ID is still a placeholder ("${sheetId}").`);
 
   let saEmail = process.env.GOOGLE_SA_EMAIL?.trim() ?? '';
