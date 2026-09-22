@@ -2,7 +2,8 @@ import type { Env, Enrichment } from './types';
 
 const SEND_URL = 'https://api.sendblue.co/api/send-message';
 
-export async function sendMessage(env: Env, content: string): Promise<void> {
+/** Send to a specific number. */
+export async function sendSms(env: Env, to: string, content: string): Promise<void> {
   const res = await fetch(SEND_URL, {
     method: 'POST',
     headers: {
@@ -10,13 +11,14 @@ export async function sendMessage(env: Env, content: string): Promise<void> {
       'sb-api-secret-key': env.SENDBLUE_API_SECRET_KEY,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({
-      number: env.ALLOWED_FROM_NUMBER,
-      from_number: env.SENDBLUE_FROM_NUMBER,
-      content,
-    }),
+    body: JSON.stringify({ number: to, from_number: env.SENDBLUE_FROM_NUMBER, content }),
   });
   if (!res.ok) throw new Error(`Sendblue send failed: ${res.status} ${await res.text()}`);
+}
+
+/** Send to the allowlisted capture number — receipts and error notices. */
+export function sendMessage(env: Env, content: string): Promise<void> {
+  return sendSms(env, env.ALLOWED_FROM_NUMBER, content);
 }
 
 /** ✅ {type}: "{title}" → Theme: {theme} | Tags: {tags} | Fit {lockii_fit}/5 */

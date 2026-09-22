@@ -104,6 +104,37 @@ export interface TestEnv {
   store: MemoryStore;
   queue: CaptureJob[];
   vars: Record<string, string>;
+  kv: MemoryKv;
+  sms: { to: string; content: string }[];
+}
+
+/** Enough of KVNamespace for the OTP and session code. */
+export class MemoryKv {
+  map = new Map<string, { value: string; expiresAt: number | null }>();
+
+  async get(key: string, type?: string): Promise<unknown> {
+    const hit = this.map.get(key);
+    if (!hit) return null;
+    if (hit.expiresAt !== null && hit.expiresAt <= Date.now()) {
+      this.map.delete(key);
+      return null;
+    }
+    return type === 'json' ? JSON.parse(hit.value) : hit.value;
+  }
+
+  async put(key: string, value: string, opts?: { expirationTtl?: number }): Promise<void> {
+    const existing = this.map.get(key);
+    this.map.set(key, {
+      value,
+      expiresAt: opts?.expirationTtl
+        ? Date.now() + opts.expirationTtl * 1000
+        : (existing?.expiresAt ?? null),
+    });
+  }
+
+  async delete(key: string): Promise<void> {
+    this.map.delete(key);
+  }
 }
 
 const NOW = new Date('2026-09-21T18:00:00Z');
@@ -162,14 +193,36 @@ export function makeTestEnv(): TestEnv {
   const store = new MemoryStore();
   seed(store);
   const queue: CaptureJob[] = [];
-  const vars: Record<string, string> = { USER_TZ: 'UTC', ACCESS_TEAM_DOMAIN: '', ACCESS_AUD: '' };
+  const vars: Record<string, string> = {
+    USER_TZ: 'UTC', ACCESS_TEAM_DOMAIN: '', ACCESS_AUD: '', OTP_PHONE: '+14355036688',
+  };
 
   const audio = new Map<string, { body: string; type: string }>([
     ['audio/2026/09/b.caf', { body: 'fake-audio', type: 'audio/x-caf' }],
   ]);
+  const kv = new MemoryKv();
+  const sms: { to: string; content: string }[] = [];
+
+  // Capture outbound texts instead of calling Sendblue.
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes('sendblue.co')) {
+      const body = JSON.parse(String(init?.body ?? '{}'));
+      sms.push({ to: body.number, content: body.content });
+      return new Response('{}', { status: 200 });
+    }
+    return realFetch(input as never, init as never);
+  }) as typeof fetch;
 
   const env = {
     API_TOKEN: 'test-token',
+    DEDUPE: kv,
+    SENDBLUE_API_KEY_ID: 'id',
+    SENDBLUE_API_SECRET_KEY: 'secret',
+    SENDBLUE_FROM_NUMBER: '+15550000000',
+    ALLOWED_FROM_NUMBER: '+15551234567',
+    get OTP_PHONE() { return vars.OTP_PHONE; },
     CAPTURE_QUEUE: { send: async (job: CaptureJob) => void queue.push(job) },
     AUDIO: {
       get: async (key: string) => {
@@ -187,7 +240,14 @@ export function makeTestEnv(): TestEnv {
   // in-memory one so no D1 binding is needed.
   setStore(store);
 
-  return { env, store, queue, vars };
+  return { env, store, queue, vars, kv, sms };
+}
+
+/** A valid session id, minted straight into the fake KV. */
+export function signIn(t: TestEnv): string {
+  const id = 'a'.repeat(64);
+  t.kv.map.set(`sess:${id}`, { value: String(Date.now()), expiresAt: null });
+  return id;
 }
 
 export async function get(
@@ -196,7 +256,7 @@ export async function get(
   opts: { auth?: boolean } = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {};
-  if (opts.auth) headers.cookie = `inbox_session=${encodeURIComponent('test-token')}`;
+  if (opts.auth) headers.cookie = `inbox_session=${signIn(t)}`;
   return worker.fetch(new Request(`https://x${path}`, { headers }), t.env);
 }
 
@@ -208,6 +268,6 @@ export async function post(
 ): Promise<Response> {
   const body = new URLSearchParams(fields);
   const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded' };
-  if (opts.auth) headers.cookie = `inbox_session=${encodeURIComponent('test-token')}`;
+  if (opts.auth) headers.cookie = `inbox_session=${signIn(t)}`;
   return worker.fetch(new Request(`https://x${path}`, { method: 'POST', headers, body }), t.env);
 }
