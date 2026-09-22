@@ -1,21 +1,13 @@
 import type { Capture, CaptureJob, ContentIdea, Enrichment, Env, InputKind, Item } from './types';
 import { newId, audioKey } from './ids';
 import { transcribe } from './transcribe';
+import { sniffAudio } from './transcribe/sniff';
 import { enrich } from './enrich';
 import { getStore, type Store } from './store';
 import { confirmationText, sendMessage, ERROR_TEXT } from './sendblue';
 
 /** Matches max_retries in wrangler.toml: 3 deliveries, then give up gracefully. */
 const MAX_ATTEMPTS = 3;
-
-function extFromMime(mime: string): string {
-  if (mime.includes('caf')) return 'caf';
-  if (mime.includes('ogg')) return 'ogg';
-  if (mime.includes('mp4') || mime.includes('m4a')) return 'm4a';
-  if (mime.includes('wav')) return 'wav';
-  if (mime.includes('mpeg')) return 'mp3';
-  return 'caf';
-}
 
 export function resolveInputKind(rawText: string, hasAudio: boolean): InputKind {
   if (rawText && hasAudio) return 'voice+text';
@@ -113,8 +105,11 @@ export async function processJob(job: CaptureJob, env: Env): Promise<void> {
     const mime = res.headers.get('content-type') ?? 'audio/x-caf';
     const bytes = new Uint8Array(await res.arrayBuffer());
 
-    const r2Key = audioKey(job.sourceId, extFromMime(mime), now);
-    await env.AUDIO.put(r2Key, bytes, { httpMetadata: { contentType: mime } });
+    // Name and label the archived object by what the bytes are, not by the
+    // CDN's content-type — that header is not ours to trust.
+    const sniffed = sniffAudio(bytes, mime);
+    const r2Key = audioKey(job.sourceId, sniffed.ext, now);
+    await env.AUDIO.put(r2Key, bytes, { httpMetadata: { contentType: sniffed.mime } });
     await store.updateCapture(capture.id, { audio_r2_key: r2Key });
 
     // 2. Transcribe.
@@ -123,16 +118,21 @@ export async function processJob(job: CaptureJob, env: Env): Promise<void> {
     await store.updateCapture(capture.id, { transcript_raw: transcript });
     await store.log(
       job.sourceId, 'info', 'transcribed',
-      `provider=${result.provider} remuxed=${result.remuxed} chars=${transcript.length}`,
+      `provider=${result.provider} container=${result.container} sent=${result.mime}` +
+        ` remuxed=${result.remuxed} chars=${transcript.length}`,
     );
   } else if (job.mediaUrl && !transcript) {
     // Audio archived on a previous attempt but transcription didn't land.
     const obj = await env.AUDIO.get(capture.audio_r2_key);
     if (!obj) throw new Error('archived audio missing from R2');
     const bytes = new Uint8Array(await obj.arrayBuffer());
-    const result = await transcribe(env, bytes, obj.httpMetadata?.contentType ?? 'audio/x-caf');
+    const result = await transcribe(env, bytes, obj.httpMetadata?.contentType ?? null);
     transcript = result.text;
     await store.updateCapture(capture.id, { transcript_raw: transcript });
+    await store.log(
+      job.sourceId, 'info', 'transcribed',
+      `provider=${result.provider} container=${result.container} from=r2 chars=${transcript.length}`,
+    );
   }
 
   const combined = combineText(job.text, transcript);
