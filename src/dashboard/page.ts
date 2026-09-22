@@ -117,6 +117,9 @@ export function renderInbox(data: InboxData): Response {
       <span class="count">${String(captures.length)} capture${captures.length === 1 ? '' : 's'}${
         totalItems ? ` · ${totalItems} item${totalItems === 1 ? '' : 's'}` : ''
       }</span>
+      <form method="post" action="/inbox/logout" class="top-sp">
+        <button class="chip" style="border:0;background:none;padding:7px 0">Sign out</button>
+      </form>
     </header>
     ${chipRow(filters)}
     <div class="layout">
@@ -132,20 +135,38 @@ export function renderInbox(data: InboxData): Response {
 }
 
 /**
- * Token form, shown when Cloudflare Access is not configured and no session
- * cookie is present. Access remains the recommended front door; this exists
- * so the dashboard is usable before it is set up.
+ * Step one: ask for a code. There is no phone field — the number is fixed in
+ * config, so there is nothing here to enumerate or redirect.
  */
-export function renderLogin(error?: string): Response {
+export function renderLogin(error?: string, notice?: string): Response {
   const body = html`<div class="login">
     <h1>Inbox</h1>
-    <p>Enter the dashboard token to continue.</p>
+    <p>A sign-in code will be texted to your phone.</p>
     ${error ? html`<p class="err">${error}</p>` : ''}
-    <form method="post" action="/inbox/login">
-      <label class="field"><span>Token</span>
-        <input type="password" name="token" autocomplete="current-password" autofocus required></label>
-      <button class="btn btn-primary" style="width:100%">Sign in</button>
+    ${notice ? html`<p style="color:var(--ink-2);font-size:var(--text-small);margin:0 0 var(--s4)">${notice}</p>` : ''}
+    <form method="post" action="/inbox/login/send">
+      <button class="btn btn-primary" style="width:100%">Text me a code</button>
     </form>
   </div>`;
   return shell('Inbox — sign in', body);
+}
+
+/** Step two: enter the six digits. */
+export function renderCodeEntry(error?: string): Response {
+  const body = html`<div class="login">
+    <h1>Enter your code</h1>
+    <p>We texted a 6-digit code. It expires in 10 minutes.</p>
+    ${error ? html`<p class="err">${error}</p>` : ''}
+    <form method="post" action="/inbox/login/verify">
+      <label class="field"><span>Code</span>
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 ]*"
+          maxlength="7" autofocus required
+          style="font:600 22px/1 var(--mono);letter-spacing:.24em;text-align:center"></label>
+      <button class="btn btn-primary" style="width:100%">Sign in</button>
+    </form>
+    <form method="post" action="/inbox/login/send" style="margin-top:var(--s4)">
+      <button class="btn" style="width:100%">Send a new code</button>
+    </form>
+  </div>`;
+  return shell('Inbox — enter code', body);
 }

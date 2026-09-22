@@ -1,9 +1,16 @@
 import type { Bucket, ContentStage, Env, ItemStatus, ItemWithContent } from '../types';
 import { BUCKETS as BUCKET_NAMES } from '../types';
-import { authorize, timingSafeEqual } from '../auth';
+import { authorize } from '../auth';
 import { getStore } from '../store';
 import { query } from './html';
-import { renderInbox, renderLogin, type InboxFilters } from './page';
+import { renderCodeEntry, renderInbox, renderLogin, type InboxFilters } from './page';
+import {
+  destroySession,
+  requestCode,
+  sessionValid,
+  verifyCode,
+  SESSION_TTL_SECONDS,
+} from './otp';
 import type { ViewContext } from './view';
 import {
   ActionError,
@@ -34,14 +41,23 @@ function readCookie(request: Request, name: string): string | null {
 }
 
 /**
- * Cloudflare Access is the front door. A session cookie holding the API token
- * is the fallback for deployments where Access is not configured yet.
+ * Cloudflare Access, a machine bearer token, or a browser session earned by
+ * entering a code texted to the configured phone.
+ *
+ * The cookie holds a random session id, not a reusable secret: a stolen
+ * cookie can be revoked by deleting one KV key, and nothing in the browser
+ * is worth replaying elsewhere.
  */
 async function authorizeBrowser(request: Request, env: Env): Promise<boolean> {
   if (await authorize(request, env)) return true;
-  const cookie = readCookie(request, COOKIE);
-  return !!(env.API_TOKEN && cookie && timingSafeEqual(cookie, env.API_TOKEN));
+  return sessionValid(env, readCookie(request, COOKIE));
 }
+
+function sessionCookie(id: string): string {
+  return `${COOKIE}=${id}; Path=/inbox; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_SECONDS}`;
+}
+
+const CLEARED_COOKIE = `${COOKIE}=; Path=/inbox; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 
 function parseFilters(url: URL): InboxFilters {
   const f: InboxFilters = {};
@@ -136,20 +152,46 @@ export async function handleDashboard(request: Request, env: Env, url: URL): Pro
   const path = url.pathname.replace(/^\/inbox\/?/, '');
 
   // Sign-in is the only route reachable unauthenticated.
-  if (path === 'login') {
-    if (request.method !== 'POST') return renderLogin();
-    const form = await request.formData();
-    const token = String(form.get('token') ?? '');
-    if (!env.API_TOKEN || !timingSafeEqual(token, env.API_TOKEN)) {
-      return renderLogin('That token is not right.');
+  if (path === 'login' || path.startsWith('login/')) {
+    const step = path.slice('login'.length).replace(/^\//, '');
+
+    if (step === 'send') {
+      if (request.method !== 'POST') return renderLogin();
+      const sent = await requestCode(env);
+      if (sent.ok) return renderCodeEntry();
+      return renderLogin(
+        sent.reason === 'rate-limited'
+          ? 'Too many codes requested. Try again in an hour.'
+          : 'No phone number is configured for sign-in. Set OTP_PHONE and redeploy.',
+      );
     }
-    return new Response(null, {
-      status: 303,
-      headers: {
-        location: '/inbox',
-        'set-cookie': `${COOKIE}=${encodeURIComponent(token)}; Path=/inbox; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 30}`,
-      },
-    });
+
+    if (step === 'verify') {
+      if (request.method !== 'POST') return renderLogin();
+      const form = await request.formData();
+      const result = await verifyCode(env, String(form.get('code') ?? ''));
+      if (result.ok) {
+        return new Response(null, {
+          status: 303,
+          headers: { location: '/inbox', 'set-cookie': sessionCookie(result.session) },
+        });
+      }
+      if (result.reason === 'wrong') return renderCodeEntry('That code is not right.');
+      return renderLogin(
+        result.reason === 'expired'
+          ? 'That code expired. Here is a fresh start.'
+          : result.reason === 'too-many-attempts'
+            ? 'Too many wrong guesses. Request a new code.'
+            : 'No code outstanding. Request one.',
+      );
+    }
+
+    return renderLogin();
+  }
+
+  if (path === 'logout' && request.method === 'POST') {
+    await destroySession(env, readCookie(request, COOKIE));
+    return new Response(null, { status: 303, headers: { location: '/inbox', 'set-cookie': CLEARED_COOKIE } });
   }
 
   if (!(await authorizeBrowser(request, env))) {

@@ -245,7 +245,7 @@ details[open] > summary .chev-r{transform:rotate(90deg)}
 .login{max-width:380px;margin:18vh auto;padding:0 var(--s5)}
 .login h1{font:600 var(--text-head)/1.2 var(--font);margin:0 0 var(--s2)}
 .login p{font-size:var(--text-small);color:var(--ink-2);margin:0 0 var(--s5)}
-.err{color:var(--danger);font-size:var(--text-small);margin:0 0 var(--s4)}
+.err,.login p.err{color:var(--danger);font-size:var(--text-small);margin:0 0 var(--s4)}
 
 /* ---- desktop ------------------------------------------------------------ */
 @media (min-width:900px){

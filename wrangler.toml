@@ -42,6 +42,10 @@ TRANSCRIBE_PROVIDER = "deepgram"
 TRANSCRIBE_KEYTERMS = ""
 # Used for any "by Friday"-style date parsing.
 USER_TZ = "America/Denver"
+# The only number /inbox login codes are sent to, in E.164.
+# Move this to a secret (`wrangler secret put OTP_PHONE`) if the repo is public.
+OTP_PHONE = "+14355036688"
+
 # Cloudflare Access protects /api/* (and the dashboard when it lands).
 # Leave both empty to allow bearer-token access only.
 ACCESS_TEAM_DOMAIN = ""

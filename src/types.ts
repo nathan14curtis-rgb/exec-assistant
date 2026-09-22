@@ -15,6 +15,11 @@ export interface Env {
   ACCESS_TEAM_DOMAIN?: string;
   /** Cloudflare Access application AUD tag. */
   ACCESS_AUD?: string;
+  /**
+   * The one number dashboard login codes are texted to, in E.164. Fixed, so
+   * there is no phone field to enumerate and a code cannot be redirected.
+   */
+  OTP_PHONE?: string;
 
   // Secrets
   SENDBLUE_API_KEY_ID: string;

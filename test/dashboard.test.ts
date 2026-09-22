@@ -144,6 +144,7 @@ describe('the bucket system', () => {
 
 import { resetStore } from '../src/store';
 import { makeTestEnv, get, post, type TestEnv } from './helpers/fake-env';
+import worker from '../src/index';
 
 describe('dashboard routes', () => {
   let env: TestEnv;
@@ -153,10 +154,10 @@ describe('dashboard routes', () => {
     env = makeTestEnv();
   });
 
-  it('refuses everything without a token', async () => {
+  it('refuses everything without a session', async () => {
     const res = await get(env, '/inbox');
     expect(res.status).toBe(200);
-    expect(await res.text()).toContain('Enter the dashboard token');
+    expect(await res.text()).toContain('Text me a code');
   });
 
   it('401s instead of offering a token box when Access is configured', async () => {
@@ -166,16 +167,12 @@ describe('dashboard routes', () => {
     expect(res.status).toBe(401);
   });
 
-  it('signs in with the token and sets an HttpOnly cookie', async () => {
-    const bad = await post(env, '/inbox/login', { token: 'wrong' });
-    expect(await bad.text()).toContain('not right');
-
-    const ok = await post(env, '/inbox/login', { token: 'test-token' });
-    expect(ok.status).toBe(303);
-    const cookie = ok.headers.get('set-cookie') ?? '';
-    expect(cookie).toContain('HttpOnly');
-    expect(cookie).toContain('Secure');
-    expect(cookie).toContain('SameSite=Lax');
+  it('still lets a machine through on the bearer token', async () => {
+    const res = await worker.fetch(
+      new Request('https://x/api/items', { headers: { authorization: 'Bearer test-token' } }),
+      env.env,
+    );
+    expect(res.status).toBe(200);
   });
 
   it('renders captures, items and the transcript', async () => {
