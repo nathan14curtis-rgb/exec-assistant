@@ -167,3 +167,33 @@ describe('transcribeDeepgram', () => {
     expect(() => extractTranscript({ results: { channels: [] } })).toThrow(/no transcript/);
   });
 });
+
+// --- which audio step the consumer takes ------------------------------------
+
+import { audioStep } from '../src/consumer';
+
+describe('audioStep', () => {
+  const cap = (audio: string, transcript: string) =>
+    ({ audio_r2_key: audio, transcript_raw: transcript });
+
+  it('downloads a new voice note', () => {
+    expect(audioStep(cap('', ''), { mediaUrl: 'https://cdn/x.caf' })).toBe('download');
+  });
+
+  it('transcribes from R2 when the audio is archived but never transcribed', () => {
+    // the queue retried after transcription failed
+    expect(audioStep(cap('audio/x.caf', ''), { mediaUrl: 'https://cdn/x.caf' })).toBe('from-r2');
+    // a dashboard re-run, which deliberately carries no media URL — this is
+    // the case that was previously unrecoverable
+    expect(audioStep(cap('audio/x.caf', ''), { mediaUrl: null })).toBe('from-r2');
+  });
+
+  it('does nothing when a transcript already exists', () => {
+    expect(audioStep(cap('audio/x.caf', 'already done'), { mediaUrl: null })).toBe('none');
+    expect(audioStep(cap('audio/x.caf', 'already done'), { mediaUrl: 'https://cdn/x.caf' })).toBe('none');
+  });
+
+  it('does nothing for a text-only capture', () => {
+    expect(audioStep(cap('', ''), { mediaUrl: null })).toBe('none');
+  });
+});

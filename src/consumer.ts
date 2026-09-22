@@ -9,6 +9,25 @@ import { confirmationText, sendMessage, ERROR_TEXT } from './sendblue';
 /** Matches max_retries in wrangler.toml: 3 deliveries, then give up gracefully. */
 const MAX_ATTEMPTS = 3;
 
+/**
+ * What the consumer must do about audio before it can enrich.
+ *
+ * Keyed on what is stored rather than on whether the job carried a media
+ * URL: a re-run from the dashboard deliberately carries none, and a capture
+ * whose transcription failed still has its audio in R2. Gating the R2 path
+ * on `job.mediaUrl` made such a capture permanently unrecoverable.
+ */
+export type AudioStep = 'download' | 'from-r2' | 'none';
+
+export function audioStep(
+  capture: Pick<Capture, 'audio_r2_key' | 'transcript_raw'>,
+  job: Pick<CaptureJob, 'mediaUrl'>,
+): AudioStep {
+  if (job.mediaUrl && !capture.audio_r2_key) return 'download';
+  if (capture.audio_r2_key && !capture.transcript_raw) return 'from-r2';
+  return 'none';
+}
+
 export function resolveInputKind(rawText: string, hasAudio: boolean): InputKind {
   if (rawText && hasAudio) return 'voice+text';
   if (hasAudio) return 'voice';
@@ -99,8 +118,10 @@ export async function processJob(job: CaptureJob, env: Env): Promise<void> {
   // 1. Archive the media first — Sendblue media URLs expire. Skip if a
   //    previous attempt already got this far.
   let transcript = capture.transcript_raw;
-  if (job.mediaUrl && !capture.audio_r2_key) {
-    const res = await fetch(job.mediaUrl);
+  const step = audioStep(capture, job);
+  if (step === 'download') {
+    // `audioStep` only returns 'download' when a media URL is present.
+    const res = await fetch(job.mediaUrl as string);
     if (!res.ok) throw new Error(`media download failed: ${res.status}`);
     const mime = res.headers.get('content-type') ?? 'audio/x-caf';
     const bytes = new Uint8Array(await res.arrayBuffer());
@@ -121,8 +142,9 @@ export async function processJob(job: CaptureJob, env: Env): Promise<void> {
       `provider=${result.provider} container=${result.container} sent=${result.mime}` +
         ` remuxed=${result.remuxed} chars=${transcript.length}`,
     );
-  } else if (job.mediaUrl && !transcript) {
-    // Audio archived on a previous attempt but transcription didn't land.
+  } else if (step === 'from-r2') {
+    // Audio is archived but has no transcript — a previous attempt failed at
+    // transcription, or this is a re-run, which carries no media URL.
     const obj = await env.AUDIO.get(capture.audio_r2_key);
     if (!obj) throw new Error('archived audio missing from R2');
     const bytes = new Uint8Array(await obj.arrayBuffer());
