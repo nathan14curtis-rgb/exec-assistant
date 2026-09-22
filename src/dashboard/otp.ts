@@ -61,21 +61,40 @@ export function formatCode(code: string): string {
   return `${code.slice(0, 3)} ${code.slice(3)}`;
 }
 
-export type SendResult =
+export type RequestResult =
   | { ok: true }
-  | { ok: false; reason: 'rate-limited' | 'not-configured' };
+  | { ok: false; reason: 'rate-limited' | 'not-configured' }
+  | { ok: false; reason: 'send-failed'; detail: string };
 
 /**
- * Mint a code, store its hash, and text it. Replaces any code still
+ * Mint a code, text it, and store its hash. Replaces any code still
  * outstanding, so only the newest one works.
+ *
+ * The text goes out *before* anything is written: a send the provider refuses
+ * must not spend the hourly allowance or leave a code outstanding that nobody
+ * ever received. The reverse order silently locked the account out after five
+ * failed attempts.
  */
-export async function requestCode(env: Env, now = Date.now()): Promise<SendResult> {
+export async function requestCode(env: Env, now = Date.now()): Promise<RequestResult> {
   if (!env.OTP_PHONE) return { ok: false, reason: 'not-configured' };
 
   const sends = Number((await env.DEDUPE.get(SENDS_KEY)) ?? 0);
   if (sends >= MAX_SENDS) return { ok: false, reason: 'rate-limited' };
 
   const code = newCode();
+  try {
+    const sent = await sendSms(
+      env,
+      env.OTP_PHONE,
+      `${formatCode(code)} is your inbox code. It expires in 10 minutes.`,
+    );
+    console.log(`otp sms accepted: status=${sent.status ?? 'unknown'} handle=${sent.message_handle ?? 'none'}`);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    console.error('otp sms failed:', detail);
+    return { ok: false, reason: 'send-failed', detail };
+  }
+
   const stored: StoredCode = {
     hash: await hashCode(code),
     attempts: 0,
@@ -88,7 +107,6 @@ export async function requestCode(env: Env, now = Date.now()): Promise<SendResul
     expirationTtl: sends === 0 ? SEND_WINDOW_SECONDS : undefined,
   });
 
-  await sendSms(env, env.OTP_PHONE, `${formatCode(code)} is your inbox code. It expires in 10 minutes.`);
   return { ok: true };
 }
 

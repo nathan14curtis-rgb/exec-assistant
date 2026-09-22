@@ -135,6 +135,47 @@ describe('the code lifecycle', () => {
     expect(t.sms).toHaveLength(0);
   });
 
+  it('reports a send Sendblue refuses in the body of a 200', async () => {
+    // The failure that made codes silently vanish: HTTP 200, status ERROR.
+    t.sendblue.body = JSON.stringify({
+      status: 'ERROR',
+      error_code: 4001,
+      error_message: 'from_number is not provisioned',
+    });
+
+    const result = await requestCode(t.env);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.reason).toBe('send-failed');
+    expect(result.ok === false && result.reason === 'send-failed' && result.detail)
+      .toContain('from_number is not provisioned');
+    expect(t.sms).toHaveLength(0);
+  });
+
+  it('reports an HTTP-level rejection too', async () => {
+    t.sendblue.status = 401;
+    t.sendblue.body = 'unauthorized';
+    const result = await requestCode(t.env);
+    expect(result.ok === false && result.reason).toBe('send-failed');
+    expect(result.ok === false && result.reason === 'send-failed' && result.detail).toContain('401');
+  });
+
+  it('spends nothing when the send fails, so failures cannot lock the account out', async () => {
+    t.sendblue.body = JSON.stringify({ status: 'ERROR', error_message: 'nope' });
+
+    // Twice as many failures as the hourly limit allows.
+    for (let i = 0; i < MAX_SENDS * 2; i++) {
+      expect((await requestCode(t.env)).ok).toBe(false);
+    }
+    // No counter burned and no code left outstanding for a text nobody got.
+    expect(t.kv.map.get('otp:sends')).toBeUndefined();
+    expect(t.kv.map.get('otp:code')).toBeUndefined();
+
+    // The moment the provider recovers, signing in works.
+    t.sendblue.body = JSON.stringify({ status: 'QUEUED', message_handle: 'h' });
+    expect(await requestCode(t.env)).toEqual({ ok: true });
+    expect((await verifyCode(t.env, codeFrom(t))).ok).toBe(true);
+  });
+
   it('rejects a forged or malformed session id', async () => {
     expect(await sessionValid(t.env, null)).toBe(false);
     expect(await sessionValid(t.env, 'nope')).toBe(false);
@@ -148,6 +189,23 @@ describe('the sign-in routes', () => {
   beforeEach(() => {
     resetStore();
     t = makeTestEnv();
+  });
+
+  it('serves the favicon to a signed-out browser', async () => {
+    const res = await get(t, '/inbox/icon.png');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+
+    // real PNG bytes, not an error page rendered with a 200
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect([...bytes.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    // small enough to belong in the worker bundle
+    expect(bytes.byteLength).toBeLessThan(32 * 1024);
+  });
+
+  it('links the favicon from the sign-in page', async () => {
+    const body = await (await get(t, '/inbox')).text();
+    expect(body).toContain('<link rel="icon" type="image/png" href="/inbox/icon.png">');
   });
 
   it('shows the request screen, not a token box', async () => {
@@ -184,6 +242,17 @@ describe('the sign-in routes', () => {
     expect(res.status).toBe(200);
     expect(body).toContain('not right');
     expect(body).not.toContain(codeFrom(t));
+  });
+
+  it('shows why a send failed rather than a blank error page', async () => {
+    t.sendblue.body = JSON.stringify({ status: 'ERROR', error_message: 'number is not a valid destination' });
+    const res = await post(t, '/inbox/login/send', {});
+    const body = await res.text();
+    expect(res.status).toBe(200);
+    expect(body).toContain('Could not send the code');
+    expect(body).toContain('number is not a valid destination');
+    // and it must not pretend a code is waiting to be typed
+    expect(body).not.toContain('Enter your code');
   });
 
   it('refuses a verify with no code outstanding', async () => {
