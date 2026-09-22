@@ -286,11 +286,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // No BEGIN TRANSACTION / COMMIT: D1 rejects explicit transaction control
+  // ("D1 runs your SQL in a transaction for you"), and `wrangler d1 execute
+  // --file` already applies the file as one batch that rolls back whole if a
+  // statement fails. Emitting them made the whole import fail at apply time.
   const lines = [
     `-- Generated ${new Date().toISOString()} from sheet ${sheetId}, tab ${legacyTab}`,
-    'BEGIN TRANSACTION;',
+    '-- Applied with: npm run migrate:apply',
     ...statements,
-    'COMMIT;',
   ];
   const out = resolve(process.cwd(), OUT_FILE);
   mkdirSync(dirname(out), { recursive: true });

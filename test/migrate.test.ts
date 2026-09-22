@@ -152,3 +152,42 @@ describe('planMigration', () => {
     expect(plan.statements.filter((s) => s.includes('INTO items'))).toHaveLength(0);
   });
 });
+
+describe('D1 compatibility of the generated SQL', () => {
+  const HEADERS2 = [
+    'id', 'created_at', 'source', 'raw_text', 'transcript', 'audio_r2_key', 'title',
+    'cleaned_idea', 'type', 'theme', 'tags', 'suggested_new_tags', 'audience_pain',
+    'content_format', 'lockii_fit', 'lockii_fit_reason', 'possible_duplicate_of',
+    'status', 'titles_draft', 'hooks_draft', 'clip_moments_draft',
+    'cta_deliverable_draft', 'picked_on', 'posted_url', 'notes', 'error',
+  ];
+  const aRow = (id: string) => {
+    const r = new Array(26).fill('');
+    r[0] = id; r[1] = '2026-09-18T12:00:00Z'; r[6] = 'a title'; r[17] = 'enriched';
+    return r;
+  };
+
+  /**
+   * D1 refuses explicit transaction control — "D1 runs your SQL in a
+   * transaction for you" — and rejects the whole file when it sees one.
+   * SQLite accepts these happily, so a local apply test does not catch it.
+   */
+  it('emits no transaction-control statement', () => {
+    const { statements } = planMigration(HEADERS2, [aRow('IDEA-1'), aRow('IDEA-2')], [['T', 'd', '1', '']]);
+    expect(statements.length).toBeGreaterThan(0);
+    for (const sql of statements) {
+      expect(sql).not.toMatch(/^\s*(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)\b/i);
+    }
+  });
+
+  it('emits only INSERTs, each a single terminated statement', () => {
+    const { statements } = planMigration(HEADERS2, [aRow('IDEA-1')], []);
+    for (const sql of statements) {
+      expect(sql.startsWith('INSERT OR IGNORE INTO ')).toBe(true);
+      expect(sql.endsWith(';')).toBe(true);
+      // one statement per line keeps wrangler's splitting predictable
+      expect(sql.split(';').filter((p) => p.trim())).toHaveLength(1);
+      expect(sql).not.toContain('\n');
+    }
+  });
+});
