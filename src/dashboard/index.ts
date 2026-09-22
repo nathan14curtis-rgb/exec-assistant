@@ -11,6 +11,7 @@ import {
   verifyCode,
   SESSION_TTL_SECONDS,
 } from './otp';
+import icon from './icon.png';
 import type { ViewContext } from './view';
 import {
   ActionError,
@@ -150,6 +151,18 @@ async function handleAudio(env: Env, captureId: string): Promise<Response> {
 
 export async function handleDashboard(request: Request, env: Env, url: URL): Promise<Response> {
   const path = url.pathname.replace(/^\/inbox\/?/, '');
+
+  // The favicon is public: the sign-in page needs it before there is a session.
+  if (path === 'icon.png') {
+    if (request.method !== 'GET') return new Response('method not allowed', { status: 405 });
+    return new Response(icon, {
+      headers: {
+        'content-type': 'image/png',
+        'cache-control': 'public, max-age=604800, immutable',
+        'x-content-type-options': 'nosniff',
+      },
+    });
+  }
 
   // Sign-in is the only route reachable unauthenticated.
   if (path === 'login' || path.startsWith('login/')) {

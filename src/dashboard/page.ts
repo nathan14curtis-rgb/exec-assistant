@@ -28,6 +28,8 @@ function shell(title: string, body: Raw): Response {
 <meta name="color-scheme" content="light dark">
 <meta name="robots" content="noindex">
 <title>${title}</title>
+<link rel="icon" type="image/png" href="/inbox/icon.png">
+<link rel="apple-touch-icon" href="/inbox/icon.png">
 <style>${raw(STYLES)}</style>
 </head>
 <body>${body}</body>

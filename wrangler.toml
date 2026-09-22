@@ -35,6 +35,11 @@ max_batch_timeout = 5
 max_retries = 3
 max_concurrency = 4
 
+# Lets `import icon from './icon.png'` pull the favicon bytes into the bundle.
+[[rules]]
+type = "Data"
+globs = ["**/icon.png"]
+
 [vars]
 # Transcription provider: deepgram | workersai | groq
 TRANSCRIBE_PROVIDER = "deepgram"

@@ -191,6 +191,23 @@ describe('the sign-in routes', () => {
     t = makeTestEnv();
   });
 
+  it('serves the favicon to a signed-out browser', async () => {
+    const res = await get(t, '/inbox/icon.png');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+
+    // real PNG bytes, not an error page rendered with a 200
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    expect([...bytes.slice(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    // small enough to belong in the worker bundle
+    expect(bytes.byteLength).toBeLessThan(32 * 1024);
+  });
+
+  it('links the favicon from the sign-in page', async () => {
+    const body = await (await get(t, '/inbox')).text();
+    expect(body).toContain('<link rel="icon" type="image/png" href="/inbox/icon.png">');
+  });
+
   it('shows the request screen, not a token box', async () => {
     const body = await (await get(t, '/inbox')).text();
     expect(body).toContain('Text me a code');
