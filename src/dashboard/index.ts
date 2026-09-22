@@ -159,6 +159,11 @@ export async function handleDashboard(request: Request, env: Env, url: URL): Pro
       if (request.method !== 'POST') return renderLogin();
       const sent = await requestCode(env);
       if (sent.ok) return renderCodeEntry();
+      if (sent.reason === 'send-failed') {
+        // The provider's own words, so a failure is diagnosable from the page
+        // rather than only from `wrangler tail`.
+        return renderLogin(`Could not send the code. ${sent.detail}`);
+      }
       return renderLogin(
         sent.reason === 'rate-limited'
           ? 'Too many codes requested. Try again in an hour.'

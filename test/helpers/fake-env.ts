@@ -106,6 +106,8 @@ export interface TestEnv {
   vars: Record<string, string>;
   kv: MemoryKv;
   sms: { to: string; content: string }[];
+  /** Override what the fake Sendblue replies with, to test a refused send. */
+  sendblue: { status: number; body: string };
 }
 
 /** Enough of KVNamespace for the OTP and session code. */
@@ -202,6 +204,17 @@ export function makeTestEnv(): TestEnv {
   ]);
   const kv = new MemoryKv();
   const sms: { to: string; content: string }[] = [];
+  // What Sendblue replies. A real accepted send looks like this; tests that
+  // need a refusal reassign it.
+  const sendblue = {
+    status: 200,
+    body: JSON.stringify({
+      status: 'QUEUED',
+      error_code: null,
+      error_message: null,
+      message_handle: 'msg-test',
+    }),
+  };
 
   // Capture outbound texts instead of calling Sendblue.
   const realFetch = globalThis.fetch;
@@ -209,8 +222,10 @@ export function makeTestEnv(): TestEnv {
     const url = String(input);
     if (url.includes('sendblue.co')) {
       const body = JSON.parse(String(init?.body ?? '{}'));
-      sms.push({ to: body.number, content: body.content });
-      return new Response('{}', { status: 200 });
+      // Only a send Sendblue accepts counts as a text that reached the phone.
+      const accepted = sendblue.status < 400 && !/"status":\s*"ERROR"|"error_message":\s*"/.test(sendblue.body);
+      if (accepted) sms.push({ to: body.number, content: body.content });
+      return new Response(sendblue.body, { status: sendblue.status });
     }
     return realFetch(input as never, init as never);
   }) as typeof fetch;
@@ -240,7 +255,7 @@ export function makeTestEnv(): TestEnv {
   // in-memory one so no D1 binding is needed.
   setStore(store);
 
-  return { env, store, queue, vars, kv, sms };
+  return { env, store, queue, vars, kv, sms, sendblue };
 }
 
 /** A valid session id, minted straight into the fake KV. */
