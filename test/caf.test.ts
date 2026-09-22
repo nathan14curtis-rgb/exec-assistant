@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { cafToOggOpus, isCaf, parseCaf } from '../src/transcribe/caf';
 
 /** Build a minimal CAF file holding `packets` of raw Opus bytes. */
-function buildCaf(packets: Uint8Array[], formatId = 'opus'): Uint8Array {
+export function buildCaf(packets: Uint8Array[], formatId = 'opus'): Uint8Array {
   const enc = new TextEncoder();
   const parts: Uint8Array[] = [];
 

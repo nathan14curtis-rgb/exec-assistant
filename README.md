@@ -106,8 +106,15 @@ so layout changes can be checked in a browser without deploying.
 Default is **Deepgram Nova-3** with keyterm prompting: `TRANSCRIBE_KEYTERMS`
 (comma-separated) biases recognition toward your vocabulary — Lockii, Hafen's,
 shrinkage. Leave it empty for the built-in list in `src/transcribe/deepgram.ts`.
-Deepgram accepts Apple's `.caf` container directly, so the pure-TS CAF→Ogg
-remux is only used if you switch to `workersai` or `groq`.
+**Containers are detected from the bytes, not the CDN's `content-type`**
+(`src/transcribe/sniff.ts`) — Sendblue can return `application/octet-stream`,
+and every provider picks its decoder from what we send. Apple voice notes
+arrive as `.caf`, which no provider accepts, so they always take the pure-TS
+CAF→Ogg Opus remux: a repackaging of the existing Opus packets, no re-encode.
+
+A Deepgram 400 with keyterms set is retried once without them — keyterm
+prompting is the optional part, and a plain transcript beats a dropped voice
+note. The retry is logged, so check `TRANSCRIBE_KEYTERMS` if you see it.
 
 ## API
 
