@@ -167,7 +167,8 @@ export function validateEnrichment(value: unknown, tagVocab: string[]): Enrichme
   };
 }
 
-async function callModel(env: Env, prompt: string): Promise<string> {
+/** One Haiku call with the JSON-object prefill. Shared with the segmenter. */
+export async function callModel(env: Env, prompt: string, maxTokens = 1200): Promise<string> {
   const res = await fetch(ANTHROPIC_URL, {
     method: 'POST',
     headers: {
@@ -177,7 +178,7 @@ async function callModel(env: Env, prompt: string): Promise<string> {
     },
     body: JSON.stringify({
       model: MODEL,
-      max_tokens: 1200,
+      max_tokens: maxTokens,
       messages: [
         { role: 'user', content: prompt },
         // Prefill the opening brace so the reply can only be a JSON object.

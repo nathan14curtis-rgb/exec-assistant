@@ -1,7 +1,7 @@
 import type { Bucket, Capture, ItemWithContent } from '../types';
 import { html, query, raw, type Raw } from './html';
 import { STYLES } from './styles';
-import { BUCKETS, BUCKET_ORDER, STAGE_ORDER, STATUS_ORDER } from './design';
+import { AREA_SHORT, BUCKETS, BUCKET_ORDER, STAGE_ORDER, STATUS_ORDER } from './design';
 import { captureView, glyph, MIC, type ViewContext } from './view';
 
 export interface InboxFilters {
@@ -111,6 +111,37 @@ function emptyState(f: InboxFilters): Raw {
   </div>`;
 }
 
+/**
+ * Add a to-do by hand. A <details> so it opens in place with no page load;
+ * the form posts once and lands on the new item.
+ */
+function addTodoForm(ctx: ViewContext): Raw {
+  return html`<details class="add">
+    <summary class="btn btn-primary">${PLUS}Add a to-do</summary>
+    <form method="post" action="/inbox/add${ctx.queryString}" class="add-form">
+      <label class="field"><span>To-do</span>
+        <input name="title" maxlength="300" placeholder="Call Marcus about the lift" required autocomplete="off"></label>
+      <label class="field"><span>Notes (optional)</span>
+        <textarea name="body" maxlength="8000" rows="2"></textarea></label>
+      <div class="two">
+        <label class="field"><span>Area</span>
+          <select name="area">
+            ${['', 'hafens', 'lockii', 'content', 'personal'].map(
+              (a) => html`<option value="${a}">${a ? AREA_SHORT[a] : 'none'}</option>`,
+            )}
+          </select></label>
+        <label class="field"><span>Due</span>
+          <input type="date" name="due"></label>
+      </div>
+      <div class="acts"><button class="btn btn-primary">Save to-do</button>
+        <a class="btn" href="/inbox${ctx.queryString}">Cancel</a></div>
+    </form>
+  </details>`;
+}
+
+const PLUS = html`<svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true" style="flex:none"
+  ><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"></path></svg>`;
+
 export function renderInbox(data: InboxData): Response {
   const { captures, itemsByCapture, counts, totalItems, filters, ctx } = data;
   const body = html`<div class="wrap">
@@ -127,6 +158,7 @@ export function renderInbox(data: InboxData): Response {
     <div class="layout">
       ${rail(filters, counts, totalItems)}
       <main>
+        ${addTodoForm(ctx)}
         ${captures.length
           ? html`<div class="cards">${captures.map((c) => captureView(c, itemsByCapture.get(c.id) ?? [], ctx))}</div>`
           : emptyState(filters)}

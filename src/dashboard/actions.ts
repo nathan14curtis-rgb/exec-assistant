@@ -1,7 +1,8 @@
-import type { Area, Bucket, CaptureJob, Env, Item, ItemStatus } from '../types';
+import type { Area, Bucket, Capture, CaptureJob, Env, Item, ItemStatus } from '../types';
 import { AREAS, BUCKETS as BUCKET_NAMES } from '../types';
 import { newId } from '../ids';
 import type { Store } from '../store';
+import { dueToIso } from '../segment';
 
 /** Where to send the browser after a POST, and which drawer to reopen. */
 export interface Redirect {
@@ -183,6 +184,56 @@ export async function keepAsNote(store: Store, captureId: string): Promise<Redir
   };
   await store.createItem(item);
   await store.updateCapture(captureId, { status: 'processed', item_count: 1, error: '' });
+  return { itemId: item.id };
+}
+
+/**
+ * A to-do typed straight into the inbox. It gets its own capture (channel
+ * "api", so the API and the inbox agree it did not arrive by text) and one
+ * item, with no model call: what was typed is what is kept.
+ */
+export async function addTodo(store: Store, form: FormData): Promise<Redirect> {
+  const title = String(form.get('title') ?? '').trim().slice(0, 300);
+  if (!title) throw new ActionError('title is required');
+  const body = String(form.get('body') ?? '').trim().slice(0, 8000);
+  const areaRaw = String(form.get('area') ?? '');
+  const area = (AREAS as readonly string[]).includes(areaRaw) ? (areaRaw as Area) : '';
+  const due = String(form.get('due') ?? '').trim();
+  const due_at = dueToIso(due);
+  if (due && !due_at) throw new ActionError('due must be a date');
+
+  const now = new Date();
+  const ts = now.toISOString();
+  const capture: Capture = {
+    id: newId('CAP', now),
+    created_at: ts,
+    channel: 'api',
+    source_id: `manual-${crypto.randomUUID()}`,
+    input_kind: 'text',
+    raw_text: body ? `${title}\n\n${body}` : title,
+    transcript_raw: '',
+    transcript_repaired: '',
+    audio_r2_key: '',
+    item_count: 1,
+    status: 'processed',
+    error: '',
+  };
+  const item: Item = {
+    id: newId('ITM', now),
+    capture_id: capture.id,
+    bucket: 'todo',
+    title,
+    body,
+    status: 'open',
+    area,
+    due_at,
+    related_item_id: '',
+    data: JSON.stringify({ manual: true }),
+    created_at: ts,
+    updated_at: ts,
+  };
+  await store.createCapture(capture);
+  await store.createItem(item);
   return { itemId: item.id };
 }
 

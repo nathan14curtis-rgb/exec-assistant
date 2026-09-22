@@ -15,6 +15,7 @@ import icon from './icon.png';
 import type { ViewContext } from './view';
 import {
   ActionError,
+  addTodo,
   deleteItem,
   editMeta,
   editText,
@@ -235,6 +236,8 @@ export async function handleDashboard(request: Request, env: Env, url: URL): Pro
 
   try {
     const form = await request.formData();
+
+    if (parts[0] === 'add' && !parts[1]) return seeOther(url, await addTodo(store, form));
 
     if (parts[0] === 'item' && parts[1]) {
       const id = parts[1];

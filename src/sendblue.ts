@@ -1,4 +1,4 @@
-import type { Env, Enrichment } from './types';
+import type { Bucket, Env, Enrichment } from './types';
 
 const SEND_URL = 'https://api.sendblue.co/api/send-message';
 
@@ -60,6 +60,31 @@ export function sendMessage(env: Env, content: string): Promise<SendResult> {
 export function confirmationText(e: Enrichment, duplicateTitle?: string | null): string {
   const tags = e.tags.length ? e.tags.join(', ') : 'none';
   let text = `✅ ${e.type}: "${e.title}" → Theme: ${e.theme} | Tags: ${tags} | Fit ${e.lockii_fit}/5`;
+  if (duplicateTitle) text += `\n⚠️ Similar to: "${duplicateTitle}"`;
+  return text;
+}
+
+const BUCKET_MARK: Record<Bucket, string> = {
+  content_idea: '▶',
+  todo: '☐',
+  roadmap: '⟶',
+  journal: '✎',
+  follow_up: '↩',
+  decision: '?',
+};
+
+/**
+ * Receipt for a capture that split into several items: one line per item so
+ * a wrong split is visible on the phone before it is visible in the inbox.
+ * A single content idea keeps the richer one-line receipt.
+ */
+export function receiptText(
+  items: { bucket: Bucket; title: string; enrichment?: Enrichment | null }[],
+  duplicateTitle?: string | null,
+): string {
+  if (items.length === 1 && items[0].enrichment) return confirmationText(items[0].enrichment, duplicateTitle);
+  const lines = items.map((i) => `${BUCKET_MARK[i.bucket] ?? '•'} ${i.title}`);
+  let text = `✅ ${items.length} item${items.length === 1 ? '' : 's'}:\n${lines.join('\n')}`;
   if (duplicateTitle) text += `\n⚠️ Similar to: "${duplicateTitle}"`;
   return text;
 }
