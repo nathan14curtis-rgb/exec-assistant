@@ -77,6 +77,16 @@ form{margin:0}
 .chip:hover{border-color:var(--ink-3);opacity:1}
 .chip[aria-current="true"]{background:var(--ink);border-color:var(--ink);color:var(--bg)}
 
+/* ---- add a to-do by hand ------------------------------------------------ */
+.add{margin-bottom:var(--s4)}
+.add > summary{list-style:none;width:100%}
+.add > summary::-webkit-details-marker{display:none}
+.add[open] > summary{border-bottom-left-radius:0;border-bottom-right-radius:0}
+.add-form{
+  background:var(--card);border:1px solid var(--line);border-top:0;
+  border-radius:0 0 var(--r-lg) var(--r-lg);padding:var(--s4) var(--s5) var(--s3);
+}
+
 /* ---- capture card ------------------------------------------------------- */
 .cards{display:flex;flex-direction:column;gap:var(--s4)}
 .card{

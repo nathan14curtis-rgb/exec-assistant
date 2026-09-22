@@ -2,9 +2,11 @@ import type { Capture, CaptureJob, ContentIdea, Enrichment, Env, InputKind, Item
 import { newId, audioKey } from './ids';
 import { transcribe } from './transcribe';
 import { sniffAudio } from './transcribe/sniff';
-import { enrich } from './enrich';
+import { enrich, type EnrichContext } from './enrich';
+import { segment, type Segment } from './segment';
 import { getStore, type Store } from './store';
-import { confirmationText, sendMessage, ERROR_TEXT } from './sendblue';
+import { receiptText, sendMessage, ERROR_TEXT } from './sendblue';
+import { titleFrom } from './dashboard/actions';
 
 /** Matches max_retries in wrangler.toml: 3 deliveries, then give up gracefully. */
 const MAX_ATTEMPTS = 3;
@@ -82,6 +84,68 @@ export function enrichmentToItem(
     notes: '',
   };
   return { item, content };
+}
+
+/** A non-idea segment becomes a plain item: the span is the body, no enrichment row. */
+export function segmentToItem(seg: Segment, captureId: string, now: Date): Item {
+  const ts = now.toISOString();
+  return {
+    id: newId('ITM', now),
+    capture_id: captureId,
+    bucket: seg.bucket,
+    title: seg.title || titleFrom(seg.text),
+    body: seg.text,
+    status: 'open',
+    area: seg.area,
+    due_at: seg.due_at,
+    related_item_id: '',
+    data: '{}',
+    created_at: ts,
+    updated_at: ts,
+  };
+}
+
+/** YYYY-MM-DD in the user's zone, for the segmenter's due-date parsing. */
+export function todayIn(now: Date, tz: string): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  } catch {
+    return now.toISOString().slice(0, 10);
+  }
+}
+
+/** One persisted-to-be item: a plain item, or a content idea with its enrichment. */
+export interface BuiltItem {
+  item: Item;
+  content: ContentIdea | null;
+  enrichment: Enrichment | null;
+}
+
+/**
+ * Segment the text, then enrich only the content ideas. All model calls
+ * finish before anything is written, so a failure part-way leaves the
+ * capture with no items rather than half of them.
+ *
+ * Items are stamped one millisecond apart so the inbox, which orders by
+ * created_at, shows them in the order they were spoken.
+ */
+export async function buildItems(
+  env: Env,
+  combined: string,
+  captureId: string,
+  now: Date,
+  ctx: EnrichContext,
+): Promise<BuiltItem[]> {
+  const segments = await segment(env, combined, { today: todayIn(now, env.USER_TZ || 'UTC'), tz: env.USER_TZ || 'UTC' });
+  return Promise.all(
+    segments.map(async (seg, i): Promise<BuiltItem> => {
+      const at = new Date(now.getTime() + i);
+      if (seg.bucket !== 'content_idea') return { item: segmentToItem(seg, captureId, at), content: null, enrichment: null };
+      const enrichment = await enrich(env, seg.text, ctx);
+      const { item, content } = enrichmentToItem(enrichment, captureId, at);
+      return { item, content, enrichment };
+    }),
+  );
 }
 
 /**
@@ -168,27 +232,34 @@ export async function processJob(job: CaptureJob, env: Env): Promise<void> {
     return;
   }
 
-  // 3. Enrich. Until the segmenter lands (Phase 3) every capture is exactly
-  //    one content idea, so this is the existing single-call flow.
+  // 3. Segment → classify → enrich per bucket. To-dos, decisions and the
+  //    rest get a plain item; only content ideas pay for the enrichment call.
   const [themes, tagVocab, recentIdeas] = await Promise.all([
     store.getThemes(),
     store.getTagVocab(),
     store.getRecentContentIdeas(50),
   ]);
-  const enrichment = await enrich(env, combined, { themes, tagVocab, recentIdeas });
+  const built = await buildItems(env, combined, capture.id, now, { themes, tagVocab, recentIdeas });
 
-  // 4. Persist item + content row, bump the theme, close out the capture.
-  const { item, content } = enrichmentToItem(enrichment, capture.id, new Date());
-  await store.createItem(item, content);
-  await store.upsertTheme(enrichment.theme, enrichment.new_theme_description ?? '');
-  await store.updateCapture(capture.id, { status: 'processed', item_count: 1, error: '' });
+  // 4. Persist items + content rows, bump themes, close out the capture.
+  for (const b of built) {
+    await store.createItem(b.item, b.content ?? undefined);
+    if (b.enrichment) await store.upsertTheme(b.enrichment.theme, b.enrichment.new_theme_description ?? '');
+  }
+  await store.updateCapture(capture.id, { status: 'processed', item_count: built.length, error: '' });
+  await store.log(
+    job.sourceId, 'info', 'segmented',
+    `items=${built.length} buckets=${built.map((b) => b.item.bucket).join(',')}`,
+  );
 
-  // 5. Receipt.
+  // 5. Receipt: one line per item, so a wrong split shows up on the phone.
   if (job.notify) {
-    const duplicateTitle = enrichment.possible_duplicate_of
-      ? recentIdeas.find((i) => i.id === enrichment.possible_duplicate_of)?.title ?? null
-      : null;
-    await sendMessage(env, confirmationText(enrichment, duplicateTitle));
+    const dupId = built.find((b) => b.enrichment?.possible_duplicate_of)?.enrichment?.possible_duplicate_of;
+    const duplicateTitle = dupId ? recentIdeas.find((i) => i.id === dupId)?.title ?? null : null;
+    await sendMessage(
+      env,
+      receiptText(built.map((b) => ({ bucket: b.item.bucket, title: b.item.title, enrichment: b.enrichment })), duplicateTitle),
+    );
   }
 }
 

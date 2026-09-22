@@ -14,18 +14,30 @@ iMessage ──► Sendblue webhook ──► /webhook  ┐
 Shortcut / curl / dictation ──► /capture    ├─► Cloudflare Queue ─► consumer
                                             ┘        1. media → R2
                                                      2. transcribe (Deepgram Nova-3)
-                                                     3. enrich (Claude)     ← Phase 3 replaces this
-                                                     4. D1 capture + items     with segment→classify→
-                                                     5. Sheets mirror          enrich-per-bucket
-                                                     6. receipt text
+                                                     3. segment (Claude) → N spans, each bucketed
+                                                     4. enrich (Claude) — content ideas only
+                                                     5. D1 capture + items
+                                                     6. Sheets mirror
+                                                     7. receipt text, one line per item
 ```
 
 ## Data model
 
 One **capture** per inbound message. N **items** per capture, each in a
 **bucket**: `content_idea` · `todo` · `roadmap` · `journal` · `follow_up` ·
-`decision`. Today the pipeline emits exactly one `content_idea` per capture;
-the multi-item segmenter is the next phase and needs no schema change.
+`decision`. The segmenter (`src/segment.ts`) cuts a capture into spans and
+buckets each one; only `content_idea` spans go on to the enrichment call.
+
+**The unit rule** the segmenter prompt is built around: one item is one thing
+you would check off, decide, or film. A to-do with three sub-steps is one
+item; two unrelated to-dos in one breath are two. It is told to split when in
+doubt, because the inbox has a split action but no merge. Guardrails live in
+code, not the prompt: at most 15 items per capture, spans under 3 words fold
+into a neighbour, a span whose quoted start cannot be found folds into the
+previous one, and the spans always tile the whole text so nothing is lost.
+The model quotes the first words of each span rather than returning offsets;
+`test/segment.test.ts` holds a memo fixture with its expected split, which is
+where prompt tuning gets measured.
 
 | Table | What |
 |---|---|
@@ -51,7 +63,7 @@ src/
     index.ts          /inbox routes, auth, filters
     page.ts           page shell, filter rail, empty states
     view.ts           capture cards, item rows, action drawer, transcript
-    actions.ts        move / done / edit / split / delete / re-run / keep
+    actions.ts        move / done / edit / split / delete / re-run / keep / add to-do
     design.ts         bucket glyphs and labels
     styles.ts         the stylesheet
     html.ts           escaping template tag
@@ -89,6 +101,8 @@ position; the only client-side behaviour is `<details>` toggling.
 - **Split** renders the body as one submit button per word: tapping a word says
   "the second thought starts here", and the tail becomes a new item on the same
   capture.
+- **Add a to-do** sits above the cards: a `<details>` form that saves a typed
+  to-do as its own capture (channel `api`) with no model call.
 - **The transcript** sits at the foot of the card, collapsed. When the repair
   step lands it shows the corrected text with the untouched original as a second
   disclosure inside it; the raw transcript is never overwritten.
@@ -248,8 +262,9 @@ npm run dev              # wrangler dev
 
 1. ~~D1 + mirror + generic capture + API~~
 2. ~~`/inbox` dashboard — read **and** write~~ (this)
-3. Segment → classify → enrich per bucket; intent gate (capture / question / noise);
-   dedupe across buckets; receipt lists titles; `undo`
+3. ~~Segment → classify → enrich per bucket; receipt lists titles~~ (this).
+   Still open: intent gate (capture / question / noise); dedupe across
+   buckets; `merge`; `undo`
 4. Google Tasks sink with sync-back cron
 5. Text-back Q&A over D1 FTS
 6. Weekly digest

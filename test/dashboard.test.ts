@@ -231,6 +231,44 @@ describe('dashboard routes', () => {
     expect(bad.status).toBe(400);
   });
 
+  it('adds a to-do by hand: its own capture, one item, no model call', async () => {
+    const res = await post(
+      env, '/inbox/add',
+      { title: 'Order shop towels', body: 'the blue ones', area: 'hafens', due: '2026-09-25' },
+      { auth: true },
+    );
+    expect(res.status).toBe(303);
+    const location = res.headers.get('location') ?? '';
+    const id = /item=(ITM-[A-Z0-9-]+)/.exec(location)?.[1];
+    expect(id).toBeTruthy();
+
+    const item = await env.store.getItem(id as string);
+    expect(item).toMatchObject({
+      bucket: 'todo', title: 'Order shop towels', body: 'the blue ones', area: 'hafens',
+      due_at: '2026-09-25T12:00:00.000Z', status: 'open',
+    });
+    expect(JSON.parse(item!.data)).toEqual({ manual: true });
+
+    const capture = await env.store.getCapture(item!.capture_id);
+    expect(capture).toMatchObject({ channel: 'api', input_kind: 'text', status: 'processed', item_count: 1 });
+    expect(capture!.source_id.startsWith('manual-')).toBe(true);
+    expect(env.queue).toHaveLength(0);
+  });
+
+  it('refuses a to-do with no title and ignores an unknown area', async () => {
+    expect((await post(env, '/inbox/add', { title: '   ' }, { auth: true })).status).toBe(400);
+    const res = await post(env, '/inbox/add', { title: 'x', area: 'garage' }, { auth: true });
+    expect(res.status).toBe(303);
+    const id = /item=(ITM-[A-Z0-9-]+)/.exec(res.headers.get('location') ?? '')?.[1];
+    expect((await env.store.getItem(id as string))!.area).toBe('');
+  });
+
+  it('shows the add-a-to-do form on the inbox', async () => {
+    const body = await (await get(env, '/inbox', { auth: true })).text();
+    expect(body).toContain('action="/inbox/add"');
+    expect(body).toContain('Add a to-do');
+  });
+
   it('splits an item into two on the same capture', async () => {
     const before = await env.store.getItem('ITM-B2');
     const at = before!.body.indexOf('Ask whether');
