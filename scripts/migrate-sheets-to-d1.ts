@@ -162,52 +162,153 @@ export function themeRowToSql(r: string[]): string {
 
 const OUT_FILE = 'migrations/data/legacy-ideas.sql';
 
+export interface MigrationReport {
+  /** Non-empty rows seen in the legacy tab. */
+  rows: number;
+  /** Rows whose id cell was blank, given a synthetic id rather than dropped. */
+  synthesizedIds: string[];
+  /** Ids appearing more than once; later ones are suffixed rather than lost. */
+  duplicateIds: string[];
+  /** Legacy rows that only produce a capture, because they failed originally. */
+  errored: number;
+  themes: number;
+  /** Header cells that do not match what this script expects to find. */
+  headerMismatch: { column: string; expected: string; found: string }[];
+}
+
+export interface MigrationPlan {
+  statements: string[];
+  report: MigrationReport;
+}
+
+function columnName(i: number): string {
+  return String.fromCharCode(65 + i);
+}
+
+/**
+ * Turn the legacy tab into SQL, accounting for every row.
+ *
+ * Nothing is dropped quietly: a blank id gets a synthetic one, a repeated id
+ * gets a suffix rather than colliding into `INSERT OR IGNORE`, and both are
+ * reported. A silent partial migration is worse than a noisy complete one —
+ * you cannot tell from the row count which records you lost.
+ */
+export function planMigration(
+  headerRow: string[],
+  ideaRows: string[][],
+  themeRows: string[][],
+): MigrationPlan {
+  const headerMismatch: { column: string; expected: string; found: string }[] = [];
+  if (headerRow.length) {
+    LEGACY_HEADERS.forEach((expected, i) => {
+      const found = (headerRow[i] ?? '').trim();
+      if (found.toLowerCase() !== expected) {
+        headerMismatch.push({ column: columnName(i), expected, found: found || '(empty)' });
+      }
+    });
+  }
+
+  const statements: string[] = [];
+  const seen = new Map<string, number>();
+  const synthesizedIds: string[] = [];
+  const duplicateIds: string[] = [];
+  let rows = 0;
+  let errored = 0;
+
+  ideaRows.forEach((raw, index) => {
+    // A row is worth migrating if anything in it is filled in — judging by
+    // the id cell alone loses rows whose id was never written.
+    if (!raw.some((cell) => (cell ?? '').trim())) return;
+    rows++;
+
+    const row = Object.fromEntries(
+      LEGACY_HEADERS.map((h, i) => [h, (raw[i] ?? '').trim()]),
+    ) as LegacyRow;
+
+    if (!row.id) {
+      row.id = `IDEA-LEGACY-${String(index + 2).padStart(4, '0')}`;
+      synthesizedIds.push(row.id);
+    }
+
+    const count = seen.get(row.id) ?? 0;
+    seen.set(row.id, count + 1);
+    if (count > 0) {
+      duplicateIds.push(row.id);
+      row.id = `${row.id}-${count + 1}`;
+    }
+
+    statements.push(...legacyRowToSql(row));
+    if (row.status === 'error') errored++;
+  });
+
+  let themes = 0;
+  for (const raw of themeRows) {
+    if (!(raw[0] ?? '').trim()) continue;
+    statements.push(themeRowToSql(raw));
+    themes++;
+  }
+
+  return {
+    statements,
+    report: { rows, synthesizedIds, duplicateIds, errored, themes, headerMismatch },
+  };
+}
+
 async function main(): Promise<void> {
   const { saEmail, saKey, sheetId, legacyTab } = loadSetupConfig();
 
   const token = await getAccessToken(saEmail, saKey);
-  const [ideaRows, themeRows] = await Promise.all([
+  const [headerRows, ideaRows, themeRows] = await Promise.all([
+    getValues(token, sheetId, `${legacyTab}!A1:Z1`),
     getValues(token, sheetId, `${legacyTab}!A2:Z`),
     getValues(token, sheetId, 'Themes!A2:D'),
   ]);
 
-  const lines: string[] = [
-    `-- Generated ${new Date().toISOString()} from sheet ${sheetId}, tab ${legacyTab}`,
-    'BEGIN TRANSACTION;',
-  ];
+  const { statements, report } = planMigration(headerRows[0] ?? [], ideaRows, themeRows);
 
-  let ideas = 0;
-  let errored = 0;
-  for (const raw of ideaRows) {
-    if (!raw[0]?.trim()) continue;
-    const row = Object.fromEntries(LEGACY_HEADERS.map((h, i) => [h, (raw[i] ?? '').trim()])) as LegacyRow;
-    lines.push(...legacyRowToSql(row));
-    ideas++;
-    if (row.status === 'error') errored++;
-  }
-
-  let themes = 0;
-  for (const raw of themeRows) {
-    if (!raw[0]?.trim()) continue;
-    lines.push(themeRowToSql(raw));
-    themes++;
-  }
-  lines.push('COMMIT;');
-
-  if (!ideas && !themes) {
+  if (!report.rows && !report.themes) {
     console.error(`\n✘ No rows found in "${legacyTab}!A2:Z" or "Themes!A2:D".`);
     console.error('  Wrong tab name? Set LEGACY_TAB in .dev.vars.\n');
     process.exit(1);
   }
 
+  if (report.headerMismatch.length) {
+    console.error(`\n✘ The "${legacyTab}" tab is not laid out the way this script expects.`);
+    console.error('  Columns are read by position, so the wrong layout imports the wrong fields:\n');
+    for (const m of report.headerMismatch.slice(0, 8)) {
+      console.error(`    column ${m.column}: expected "${m.expected}", found "${m.found}"`);
+    }
+    if (report.headerMismatch.length > 8) {
+      console.error(`    … and ${report.headerMismatch.length - 8} more`);
+    }
+    console.error('\n  Nothing was written. Set LEGACY_TAB if this is the wrong tab, or');
+    console.error('  reorder the sheet to match src/store/mirror.ts.\n');
+    process.exit(1);
+  }
+
+  const lines = [
+    `-- Generated ${new Date().toISOString()} from sheet ${sheetId}, tab ${legacyTab}`,
+    'BEGIN TRANSACTION;',
+    ...statements,
+    'COMMIT;',
+  ];
   const out = resolve(process.cwd(), OUT_FILE);
   mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, lines.join('\n') + '\n', 'utf8');
 
-  console.log(`read ${ideas} ideas (${errored} error rows -> capture only) and ${themes} themes`);
-  console.log(`wrote ${lines.length - 3} statements to ${OUT_FILE}`);
+  console.log(`read ${report.rows} rows (${report.errored} failed originally -> capture only)`);
+  console.log(`read ${report.themes} themes`);
+  if (report.synthesizedIds.length) {
+    console.log(`\n⚠ ${report.synthesizedIds.length} row(s) had no id; gave them one so they are not lost:`);
+    console.log(`  ${report.synthesizedIds.slice(0, 5).join(', ')}${report.synthesizedIds.length > 5 ? ' …' : ''}`);
+  }
+  if (report.duplicateIds.length) {
+    console.log(`\n⚠ ${report.duplicateIds.length} repeated id(s); suffixed so none is dropped:`);
+    console.log(`  ${[...new Set(report.duplicateIds)].slice(0, 5).join(', ')}`);
+  }
+  console.log(`\nwrote ${statements.length} statements to ${OUT_FILE}`);
   console.log('\nReview it, then apply:');
-  console.log(`  npx wrangler d1 execute idea-capture --remote --file=${OUT_FILE}`);
+  console.log('  npm run migrate:apply');
 }
 
 // Only run when executed directly, so tests can import the pure helpers.

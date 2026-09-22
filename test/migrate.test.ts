@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { legacyRowToSql, q, themeRowToSql } from '../scripts/migrate-sheets-to-d1';
+import { legacyRowToSql, planMigration, q, themeRowToSql } from '../scripts/migrate-sheets-to-d1';
 import { loadEnvFile, parseEnvFile } from '../scripts/config';
 
 const legacy = {
@@ -89,5 +89,66 @@ describe('loadEnvFile precedence', () => {
 
   it('is a no-op when the file is missing', () => {
     expect(() => loadEnvFile(join(tmpdir(), 'definitely-not-here'))).not.toThrow();
+  });
+});
+
+describe('planMigration', () => {
+  const HEADERS = [
+    'id', 'created_at', 'source', 'raw_text', 'transcript', 'audio_r2_key', 'title',
+    'cleaned_idea', 'type', 'theme', 'tags', 'suggested_new_tags', 'audience_pain',
+    'content_format', 'lockii_fit', 'lockii_fit_reason', 'possible_duplicate_of',
+    'status', 'titles_draft', 'hooks_draft', 'clip_moments_draft',
+    'cta_deliverable_draft', 'picked_on', 'posted_url', 'notes', 'error',
+  ];
+  const row = (id: string, title = 'a title', status = 'enriched') => {
+    const r = new Array(26).fill('');
+    r[0] = id; r[1] = '2026-09-18T12:00:00Z'; r[6] = title; r[17] = status;
+    return r;
+  };
+
+  it('accounts for every filled row, not just those with an id', () => {
+    const noId = row('', 'lost its id');
+    const plan = planMigration(HEADERS, [row('IDEA-1'), noId, row('IDEA-2')], []);
+    expect(plan.report.rows).toBe(3);
+    expect(plan.report.synthesizedIds).toHaveLength(1);
+    // the row without an id still produced its three statements
+    expect(plan.statements.filter((s) => s.includes('INTO items'))).toHaveLength(3);
+  });
+
+  it('suffixes a repeated id instead of losing it to INSERT OR IGNORE', () => {
+    const plan = planMigration(HEADERS, [row('IDEA-1', 'first'), row('IDEA-1', 'second')], []);
+    expect(plan.report.duplicateIds).toEqual(['IDEA-1']);
+    const items = plan.statements.filter((s) => s.includes('INTO items'));
+    expect(items).toHaveLength(2);
+    expect(items[0]).toContain("'IDEA-1'");
+    expect(items[1]).toContain("'IDEA-1-2'");
+    expect(items[1]).toContain('second');
+  });
+
+  it('ignores blank rows without counting them', () => {
+    const plan = planMigration(HEADERS, [row('IDEA-1'), new Array(26).fill(''), []], []);
+    expect(plan.report.rows).toBe(1);
+  });
+
+  it('reports a header layout that does not match, naming the column', () => {
+    const wrong = [...HEADERS];
+    wrong[6] = 'headline';
+    const plan = planMigration(wrong, [row('IDEA-1')], []);
+    expect(plan.report.headerMismatch).toEqual([
+      { column: 'G', expected: 'title', found: 'headline' },
+    ]);
+  });
+
+  it('accepts the expected layout, case-insensitively, and an absent header row', () => {
+    expect(planMigration(HEADERS.map((h) => h.toUpperCase()), [], []).report.headerMismatch).toEqual([]);
+    expect(planMigration([], [row('IDEA-1')], []).report.headerMismatch).toEqual([]);
+  });
+
+  it('counts themes and error rows', () => {
+    const plan = planMigration(HEADERS, [row('IDEA-1', 't', 'error')], [['Pricing', 'd', '2', '']]);
+    expect(plan.report.errored).toBe(1);
+    expect(plan.report.themes).toBe(1);
+    // an error row yields a capture and no item
+    expect(plan.statements.filter((s) => s.includes('INTO items'))).toHaveLength(0);
   });
 });
