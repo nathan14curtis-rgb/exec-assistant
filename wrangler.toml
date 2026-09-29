@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2025-01-15"
 compatibility_flags = ["nodejs_compat"]
 
+# Served at notes.nathancurtis.space (moved off the root domain, which now hosts ./site).
+# The zone must be on Cloudflare; the custom domain creates the DNS record automatically.
+routes = [{ pattern = "notes.nathancurtis.space", custom_domain = true }]
+
 # Workers AI — fallback transcription provider (TRANSCRIBE_PROVIDER = "workersai").
 [ai]
 binding = "AI"

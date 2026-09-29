@@ -8,3 +8,4 @@ migrations/data/
 key.pem
 api_token.txt
 preview/out.html
+site/public/
