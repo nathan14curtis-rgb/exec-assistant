@@ -216,3 +216,51 @@ input::placeholder,textarea::placeholder{color:#8a948f}
 .links a{display:flex;justify-content:space-between;gap:16px;padding:20px 0;border-bottom:1px solid #dfe5e3;font-weight:700;font-size:15px}
 .linkbtn{align-self:flex-start;background:none;border:none;padding:0;font-size:13px;color:#5c6961;text-decoration:underline;cursor:pointer}
 [hidden]{display:none!important}
+/* phones: the desktop grids stack, so drop the chrome that only makes sense side by side */
+@media (max-width:720px){
+.outer{padding:0}
+.hdr{padding-top:24px;padding-bottom:20px;gap:16px 12px}
+.hdr .nav{order:3;width:100%;gap:0;justify-content:space-between;border-top:1px solid #e6eae8;padding-top:14px}
+.hdr .nav a{padding-bottom:6px}
+.join{padding:10px 14px}
+.vline,.side,.hero-c .vtabs{display:none}
+.hero{min-height:0}
+.hero-l{padding-top:8px;padding-bottom:40px}
+.hero-c{padding-top:0;gap:18px}
+.hero-c h1{font-size:min(64px,17cqi)}
+.mail button{flex:1 1 auto}
+.hero-r{min-height:440px}
+.hero-r .pic{right:56px}
+.rail{width:56px;gap:16px}
+.rail button.on{font-size:24px}
+.pn{width:112px;height:60px}
+.channels{gap:10px 24px;padding-top:22px;padding-bottom:22px}
+.channels b{width:100%}
+.offer,.offer .in{min-height:420px}
+.offer .in{padding:48px 24px}
+.videos,.chapters,.beliefs{padding-top:72px;padding-bottom:72px}
+.vwrap{grid-template-columns:minmax(0,1fr);gap:24px}
+.vtab{flex-direction:row;overflow-x:auto;gap:8px;scrollbar-width:none}
+.vtab button{writing-mode:horizontal-tb;transform:none;height:auto;width:auto;flex:0 0 auto;padding:10px 16px}
+.vgrid{grid-template-columns:minmax(0,1fr);gap:32px}
+.band{padding:16px 0}
+.story{padding-bottom:72px}
+.story-g{margin-top:-40px;gap:40px}
+.photos>div:first-child{height:180px!important}
+.photos>div:last-child{height:280px!important;border-radius:140px 140px 0 0!important}
+.cta{padding-top:72px;padding-bottom:72px;gap:32px}
+.news button{flex:1 1 auto}
+.for>div+div{border-left:0;border-top:1.5px solid #121a16}
+.bgrid>div{padding:28px 0}
+.bgrid>div+div{border-left:0;border-top:1px solid #dfe5e3}
+.tl{padding-top:72px;padding-bottom:72px;gap:32px}
+.tl .sticky{position:static}
+.tli{grid-template-columns:56px minmax(0,1fr);gap:16px}
+.abt-r{min-height:420px}
+.faq{padding-bottom:72px;gap:32px}
+.fpage{min-height:0}
+.foot{flex-direction:column;align-items:flex-start}
+}
+/* three options always sit on one row */
+.seg{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:1fr}
+.seg button{padding:14px 6px}
