@@ -1,0 +1,34 @@
+# Root site: https://nathancurtis.space (static pages + form API).
+# The notetaker Worker lives in ../wrangler.toml and is served at notes.nathancurtis.space.
+name = "nathancurtis-site"
+main = "worker.ts"
+compatibility_date = "2025-01-15"
+
+routes = [
+  { pattern = "nathancurtis.space", custom_domain = true },
+  { pattern = "www.nathancurtis.space", custom_domain = true },
+]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+html_handling = "auto-trailing-slash"
+not_found_handling = "404-page"
+# Let the Worker see /forms/* and the old notetaker paths before falling back to static files.
+run_worker_first = true
+
+# Same D1 as the notetaker (table: site_submissions, migration 0002).
+[[d1_databases]]
+binding = "DB"
+database_name = "idea-capture"
+database_id = "ca0b3d4d-4604-42a2-b68b-2a8fdb775442"
+migrations_dir = "../migrations"
+
+[vars]
+NOTES_ORIGIN = "https://notes.nathancurtis.space"
+# Where consultation requests are emailed, and the From address (must be a verified Resend domain).
+NOTIFY_EMAIL = ""
+FROM_EMAIL = ""
+# Optional Cal.com / Calendly link included in the lead's confirmation email.
+BOOKING_URL = ""
+# Secrets (wrangler secret put): RESEND_API_KEY, NEWSLETTER_WEBHOOK_URL
