@@ -1,4 +1,4 @@
-// Static build: renders the five pages into public/. Run with `npm run site:build`.
+// Static build: renders the pages into public/. Run with `npm run site:build`.
 // Photos: drop files named after the slot id (e.g. img/hero-portrait.jpg) into site/img/
 // and rebuild; empty slots render as a labelled placeholder.
 import { mkdirSync, writeFileSync, copyFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -75,112 +75,214 @@ const chipGroup = (name, opts) =>
 const seg = (name, opts, sel) =>
   `<div class="seg" data-seg="${name}">${opts.map((o, i) => `<button type="button" aria-pressed="${i === sel}">${o}</button>`).join('')}</div>`;
 
-/* ---------------- Home ---------------- */
-const videos = [
-  ['How I became a rent-repreneur with a 9–5', '18:42', 'Popular'],
-  ['My utility trailer paid for itself in 7 weeks', '12:05', 'Trailers'],
-  ['Renting paddleboards: the summer playbook', '09:31', 'Water'],
-  ['Tools people rent every weekend', '14:20', 'Tools'],
-  ['Renting out a car without losing sleep', '21:10', 'Cars'],
-  ['Automating bookings, deposits and pickups', '11:48', 'Popular'],
+/* ---------------- Home + Book a Call (full-bleed redesign; home.css / home.js) ---------------- */
+// Fill these in as they come: empty social URLs render without a link, and bracketed
+// placeholder quotes are left off the page.
+const social = [['YouTube', ''], ['Instagram', ''], ['Facebook', ''], ['LinkedIn', ''], ['Rent-repreneur Podcast', '']];
+const proof = [['$10,000+', 'Monthly rental income from my own fleet'], ['150+', 'Rent-repreneurs reading every Sunday'], ['DOZENS', 'Rental categories run on the same system']];
+const quotes = [
+  ['[Subscriber result — e.g. what they rented and what it made]', '[Name, city]'],
+  ['[Subscriber result — e.g. how the newsletter helped them start]', '[Name, city]'],
+].filter(([t]) => !t.startsWith('['));
+const ideaGroups = ['All', 'Wheels', 'Water', 'Gear & space'];
+// [image slot, label, group, who rents]
+const ideas = [
+  ['rent-trailers', 'Trailers', 'Wheels', 'Movers, landscapers, weekend haulers'],
+  ['rent-tools', 'Tools', 'Gear & space', 'DIYers who need it once'],
+  ['rent-cars', 'Cars', 'Wheels', 'Travelers and between-car locals'],
+  ['rent-outdoor-equipment', 'Outdoor Equipment', 'Water', 'Summer tourists and families'],
+  ['rent-water-craft', 'Water craft', 'Water', 'Lake-day groups'],
+  ['rent-atvs', 'ATVs', 'Wheels', 'Weekend adventurers'],
+  ['rent-spaces', 'Spaces', 'Gear & space', 'People fixing their own cars'],
 ];
-const tabs = ['Popular', 'Trailers', 'Water', 'Tools', 'Cars', 'See all'];
+const teach = [
+  ['Build the brand', 'Turn one item into a rental people trust — name, photos, listings and reviews.'],
+  ['Optimize the systems', 'Automate bookings, deposits, pickups and messages so it runs without you.'],
+  ['Replace the income', 'Reinvest and stack rentals until they replace your paycheck. Keep the 9–5 while you build.'],
+];
+const issue = [
+  ['One rental idea', 'Something people rent, who rents it and what to charge.'],
+  ['One listing that works', 'A real listing broken down: photos, price, copy.'],
+  ['One system or tool', 'How I automate a piece of the business.'],
+];
+// [thumbnail slot, title, length, url]
+const startHere = [
+  ['vid-0', 'How I became a rent-repreneur with a 9–5', '18:42', ''],
+  ['vid-1', 'My utility trailer paid for itself', '12:05', ''],
+  ['vid-2', 'Automating bookings, deposits and pickups', '11:48', ''],
+];
+const homeFaq = [
+  ['How much do I need to start?', 'Most people start with something they already own, so the first rental can cost little or nothing up front. The newsletter covers when it makes sense to buy.'],
+  ['How many hours a week does it take?', 'Once bookings, payments and pickups are automated, a rental takes a few hours a week. The system is built to fit around a full-time job.'],
+  ['What if something gets damaged?', 'Deposits, rental agreements and the right insurance cover most of the risk. I break down my exact setup in the newsletter.'],
+  ['Do I have to quit my job?', "No. The whole point is to build rental income alongside your 9–5 until you decide you don't need it."],
+];
 
-const home = shell({
-  title: 'Nathan Curtis — The Rent-repreneur Guide',
-  desc: 'Rent anything — trailers, tools, cars, paddleboards, camping gear, shop space. Replace your income and keep your 9–5.',
+const pic = (id, ph, alt = '') => {
+  const e = imgFor(id);
+  return e ? `<img class="img" src="/img/${id}.${e}" alt="${alt}" loading="lazy">` : `<span class="ph">${ph}</span>`;
+};
+const logo = (href) => `<a href="${href}" class="logo"><b>Nathan Curtis</b><span>The Rent-repreneur</span></a>`;
+const mailForm = (source, note) => `<form class="mail" data-signup="${source}" novalidate>
+<input type="email" name="email" required autocomplete="email" placeholder="Your email" aria-label="Your email">
+<button type="submit">Join free →</button>
+<small>${note}</small>
+<span class="err" role="alert" hidden></span>
+</form>`;
+
+const shell2 = ({ title, desc, body, path, cls = '' }) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title}</title>
+<meta name="description" content="${desc}">
+<link rel="canonical" href="https://nathancurtis.space${path}">
+<meta property="og:title" content="${title}">
+<meta property="og:description" content="${desc}">
+<meta name="theme-color" content="#121a16">
+<link rel="stylesheet" href="https://use.typekit.net/urg8mkb.css">
+<link rel="stylesheet" href="/home.css">
+</head>
+<body${cls ? ` class="${cls}"` : ''}>
+${body}
+<script src="/home.js" defer></script>
+</body>
+</html>
+`;
+
+const home = shell2({
+  title: 'Nathan Curtis — The Rent-repreneur',
+  desc: 'Build a rental business around your 9–5. One rental idea and one system every Sunday in the All For Rent newsletter.',
   path: '/',
   body: `
-<div class="rel">
-<div class="vline" style="left:calc(clamp(20px,4vw,56px) + 120px + clamp(10px,2vw,32px))" aria-hidden="true"></div>
-<div class="vline" style="left:50%" aria-hidden="true"></div>
-<div class="vline" style="right:90px" aria-hidden="true"></div>
-${nav('')}
-<section id="top" class="hero">
-<div class="hero-l">
-<aside class="side">
-<div><span class="ind">Start</span>
-<nav><a href="/guide">The Guide</a><a href="/#videos">YouTube</a><a href="/newsletter">Newsletter <i>free</i></a><a href="/about">About</a></nav></div>
-<span class="ind">Info</span>
-</aside>
-<div class="hero-c">
-<span style="font-size:14px;color:#2c3a33" data-slide="eyebrow"></span>
-<h1 class="disp" data-slide="word"></h1>
-<p data-slide="desc"></p>
-<form class="mail" data-email-redirect>
-<input type="email" name="email" required placeholder="Your email" aria-label="Your email">
-<button type="submit" class="blk">Get the free guide</button>
-</form>
-<a href="/#videos" class="watch"><i>▶</i> Watch: my first $1k rental month</a>
-<div class="vtabs" style="margin-top:auto">${['Trailers', 'Paddleboards', 'Tools & gear', 'Cars'].map((p) => `<div style="height:150px">${p}</div>`).join('')}</div>
-</div>
-</div>
-<div class="hero-r">
-<div class="pic">${slot('hero-portrait', 'Nathan — portrait cutout on white')}</div>
-<div class="rail" data-rail></div>
-<div class="pn"><button type="button" data-prev aria-label="Previous">‹</button><button type="button" data-next aria-label="Next">›</button></div>
-</div>
-</section>
-</div>
-${hazard}
-<div class="channels pad"><b>Find me on</b><span>YouTube</span><span>Instagram</span><span>Facebook</span><span>LinkedIn</span><span>The Rent-repreneur Podcast</span></div>
+<div class="hz" aria-hidden="true"></div>
+<header class="hdr px">
+${logo('#top')}
+<button type="button" class="burger" aria-label="Menu" aria-expanded="false" aria-controls="menu" data-menu-open><span></span><span></span><span></span></button>
+</header>
 
-<section id="guide" class="offers">
-<div class="offer" style="background:#FAA534;color:#121a16">
-<div class="dim" style="opacity:.35">${slot('block-guide', 'Trailer / paddleboards / gear lineup')}</div>
-<div class="in">
-<span class="label">01 — The flagship</span>
-<h2 class="ind">The Rent-repreneur Guide</h2>
-<p>How to buy the right gear, list it, price it and automate bookings — trailers, paddleboards, tools, cars. Built to run around your 9–5.</p>
-<div class="row"><a href="/guide" class="btn blk">Get the guide</a><a href="/guide#chapters" class="btn out-k">What's inside</a></div>
-</div></div>
-<div class="offer" style="background:#121a16;color:#fbfcfa">
-<div class="dim" style="opacity:.3">${slot('block-news', 'Nathan handing off a rental')}</div>
-<div class="in">
-<span class="label">02 — Every Sunday</span>
-<h2 class="ind">All For Rent<br>Newsletter</h2>
-<p>One item worth renting, one listing that works, one number from my week. Three-minute read, free forever.</p>
-<div class="row"><a href="/newsletter" class="btn" style="background:#fbfcfa;color:#121a16">Subscribe</a><a href="#newsletter" class="btn" style="border:1.5px solid #fbfcfa;color:#fbfcfa">Read an issue</a></div>
-</div></div>
+<div class="menu px" id="menu" role="dialog" aria-modal="true" aria-label="Menu" hidden>
+<div class="menu-top"><span>Menu</span><button type="button" class="x" aria-label="Close" data-menu-close>×</button></div>
+<nav>${[['Newsletter', '#newsletter'], ['Rental ideas', '#ideas'], ['Videos', '#videos'], ['My story', '#story'], ['Book a call', '#call']]
+  .map(([l, h]) => `<a href="${h}" data-menu-close><span>${l}</span><i>→</i></a>`).join('')}</nav>
+<a href="#newsletter" class="menu-cta" data-popup>Join the newsletter</a>
+</div>
+
+<main>
+<section id="top" class="hero cols">
+<div class="hero-t px">
+<span class="eyebrow dot">The All For Rent Newsletter</span>
+<h1 class="disp">build<br>rental<br>business</h1>
+<p>I believe rentals are the next part of the digital revolution. Every Sunday I send one rental idea and one system to help you build a brand and replace your income, all while keeping your 9–5.</p>
+${mailForm('hero', 'Free every Sunday. 3-minute read. Unsubscribe anytime.')}
+<div class="ok" data-ok hidden><b>You're in.</b><span>Check your inbox for your first issue.</span></div>
+<a href="/book" class="ulink">Already renting and out of time? Book a free call →</a>
+</div>
+<div class="hero-p">${pic('hero-portrait', 'Nathan — portrait cutout on white', 'Nathan Curtis')}</div>
 </section>
 
-<section id="videos" class="videos pad">
-<div class="center"><h2 class="ind h2c">Start here</h2><p>Free breakdowns for new rent-repreneurs. What to buy, what it earns, how to run it on autopilot.</p></div>
-<div class="vwrap">
-<div class="vtab" data-vtabs>${tabs.map((t, i) => `<button type="button"${i === 0 ? ' class="on"' : ''}>${t}</button>`).join('')}</div>
-<div class="vgrid" data-vgrid>
-${videos.map((v, i) => `<a href="/#videos" class="vcard" data-cat="${v[2]}"><div class="th">${slot('vid-' + i, 'Thumbnail')}</div><div class="t"><b>${v[0]}</b><span>${v[1]}</span></div><small>${v[2]}</small></a>`).join('\n')}
-</div></div>
+<section class="proof cols" aria-label="By the numbers">
+${proof.map(([n, l]) => `<div class="px"><b>${n}</b><span>${l}</span></div>`).join('\n')}
 </section>
 
-<div class="band" aria-hidden="true">Trailers ■ Tools ■ Cars ■ Camping gear ■ Paddleboards ■ Shop space ■ Trailers ■ Tools ■ Cars</div>
-
-<section id="story" class="story pad">
-<div class="wordmark disp" aria-hidden="true">CURTIS</div>
-<div class="story-g">
-<div class="story-t">
-<span class="label amber">Hey, I'm Nathan</span>
-<h2 class="ind">I started by renting garage space.</h2>
-<p>My first rental business rented shop space so people could fix their own cars. Once I found the right automated system, I realized it works for almost anything. Trailers or tools, cars or camping supplies: my mission is to make sure every rent-repreneur knows the tools they need to succeed.</p>
-<div class="row" style="align-items:center;gap:24px"><a href="/consultation" class="btn yel sm">Free Consultation Call</a><a href="/about" class="ulink">Read the full story →</a></div>
+<section id="ideas" class="ideas px">
+<div class="intro">
+<span class="eyebrow amber">Where my system has been applied</span>
+<h2 class="disp h2d">You can rent anything.</h2>
+<p>Start with what's already in your garage, driveway or shed. Pick a category to find your first rental.</p>
 </div>
-<div class="photos">
-<div style="height:260px">${slot('story-1', 'Nathan in the garage bay')}</div>
-<div style="height:400px;border-radius:200px 200px 0 0;overflow:hidden">${slot('story-2', 'Nathan — arch portrait')}</div>
-</div>
+<div class="chips" data-ideas-filter>${ideaGroups.map((g, i) => `<button type="button" class="chip" aria-pressed="${i === 0}">${g}</button>`).join('')}</div>
+<div class="igrid">
+${ideas.map(([id, l, g, who]) => `<div class="card" data-group="${g}"><div class="pic">${pic(id, l, l)}</div><div class="t"><b>${l}</b><span><i>Who rents: </i>${who}</span></div></div>`).join('\n')}
+<a href="#newsletter" class="more" data-popup><b>Don't see yours?</b><span>Join the newsletter and reply with what you own. I'll tell you if it'll rent.</span><strong>Join free →</strong></a>
 </div>
 </section>
 
-${hazard}
-<section id="newsletter" class="cta news pad">
-<div class="lab"><span class="label">All For Rent<br>Newsletter</span><h2 class="disp">Own it.<br>Rent it.<br>Replace it.</h2></div>
-<div style="display:flex;flex-direction:column;gap:20px">
-<p>Become a rent-repreneur. Get the first chapter of the guide today, then one item worth renting every Sunday. Keep your 9–5 and build income on the side.</p>
-<form data-email-redirect><input type="email" name="email" required placeholder="Your email" aria-label="Your email"><button type="submit">Get the free guide</button></form>
-<span style="font-size:12px;color:#2a2210">No spam. Unsubscribe anytime.</span>
+<section class="teach px">
+<h2 class="h2">What I teach</h2>
+<div class="steps cols">
+${teach.map(([t, b], i) => `<div><span class="sq">${i + 1}</span><div><b>${t}</b><span>${b}</span></div></div>`).join('\n')}
 </div>
 </section>
-${footer(true)}`,
+
+<div class="hz12" aria-hidden="true"></div>
+<section id="newsletter" class="news cols px">
+<div>
+<span class="eyebrow">All For Rent · Every Sunday</span>
+<h2 class="disp h2d">Keep the 9–5. Build the fleet.</h2>
+<div class="issue">${issue.map(([t, b], i) => `<div><em>0${i + 1}</em><div><b>${t}</b><span>${b}</span></div></div>`).join('')}</div>
+</div>
+<div>
+${mailForm('newsletter', '3-minute read. Unsubscribe anytime.')}
+<div class="ok" data-ok hidden><b>You're in.</b><span>First issue lands Sunday.</span></div>
+${quotes.map(([t, w]) => `<figure class="quote"><blockquote>“${t}”</blockquote><figcaption>${w}</figcaption></figure>`).join('\n')}
+</div>
+</section>
+
+<section id="videos" class="videos">
+<div class="head px"><h2>Start here</h2><p>Three free breakdowns for new rent-repreneurs.</p></div>
+<div class="rail px">
+${startHere.map(([id, t, len, url]) => `<a href="${url || '#videos'}"${url ? ' target="_blank" rel="noopener"' : ''}><div class="th">${pic(id, 'Thumbnail')}<span class="len">${len}</span></div><b>${t}</b></a>`).join('\n')}
+</div>
+</section>
+
+<section id="story" class="story cols">
+<div class="story-p">${pic('story-garage', 'Nathan in the garage bay', 'Nathan in the garage bay')}</div>
+<div class="story-t px">
+<span class="eyebrow amber">Hey, I'm Nathan</span>
+<h2 class="h2">I started by renting garage space.</h2>
+<p>My first rental business rented shop space so people could fix their own cars. Once I found the right automated system, I realized it works for almost anything. My mission: every rent-repreneur should know the tools they need to succeed.</p>
+<a href="/about" class="ulink">Read the full story →</a>
+</div>
+</section>
+
+<section id="call" class="call cols px">
+<div>
+<span class="eyebrow">Already renting? · Free 30-minute call</span>
+<h2 class="h2">Your rentals shouldn't run your life.</h2>
+<p>For owners juggling bookings, messages, deposits and pickups on top of a 9–5. We'll walk through how you run things today, and you'll leave knowing exactly what to automate first so you can get your time back.</p>
+</div>
+<div><a href="/book" class="bar-btn"><span>Book a free call</span><span>→</span></a><small>Limited spots each week.</small></div>
+</section>
+
+<section id="faq" class="faq cols px">
+<h2 class="h2">Before you start</h2>
+<div class="faql" data-faq>
+${homeFaq.map(([q, a], i) => `<div><button type="button" aria-expanded="false" aria-controls="faq-${i}"><span>${q}</span><i aria-hidden="true">+</i></button><p id="faq-${i}" hidden>${a}</p></div>`).join('\n')}
+</div>
+</section>
+</main>
+
+<footer class="foot px">
+<b>Nathan Curtis</b>
+<div class="social cols">${social.map(([l, u]) => (u ? `<a href="${u}" target="_blank" rel="noopener"><span>${l}</span><i>↗</i></a>` : `<a><span>${l}</span><i>↗</i></a>`)).join('')}</div>
+<small>© 2026 Nathan Curtis · <a href="/guide">Guide</a> · <a href="/about">About</a></small>
+</footer>
+
+<div class="sbar px">
+<button type="button" data-popup>Join the newsletter</button>
+<a href="/book">Book a call</a>
+</div>
+
+<div class="ov" data-popup-overlay hidden>
+<div class="pop" role="dialog" aria-modal="true" aria-labelledby="pop-h">
+<div class="hz" aria-hidden="true"></div>
+<div class="pop-in">
+<div class="pop-top"><span class="eyebrow">All For Rent · Every Sunday</span><button type="button" class="x" aria-label="Close" data-popup-close>×</button></div>
+<div data-pop-form style="display:flex;flex-direction:column;gap:16px">
+<h2 id="pop-h" class="disp">One rental idea. Every Sunday.</h2>
+<p>Plus one listing that works and one system to automate. Three-minute read.</p>
+${mailForm('popup', 'No spam. Unsubscribe anytime.')}
+</div>
+<div data-ok hidden style="display:flex;flex-direction:column;gap:16px">
+<h2 class="disp">You're in.</h2>
+<p>Your first issue lands Sunday. Already renting and short on time?</p>
+<a href="/book" class="bar-btn o"><span>Book a free call</span><span>→</span></a>
+</div>
+</div>
+</div>
+</div>`,
 });
 
 /* ---------------- Guide ---------------- */
@@ -273,13 +375,13 @@ ${nav('story')}
 <span style="font-size:14px;color:#2c3a33">About Nathan</span>
 <h1 class="disp h1">It started with a garage.</h1>
 <p class="lead">I'm Nathan. My first rental business rented shop space so people could fix their own cars. Automating it showed me the same system works for almost anything you can rent.</p>
-<div class="row"><a href="/consultation" class="btn yel">Free Consultation Call</a><a href="#story" class="btn out">Read the story</a></div>
+<div class="row"><a href="/book" class="btn yel">Free Consultation Call</a><a href="#story" class="btn out">Read the story</a></div>
 <div class="vtabs" style="margin-top:12px">${['Rented shop space', 'Found the system', 'Saw the pattern', 'Shares it all'].map((t) => `<div style="height:140px">${t}</div>`).join('')}</div>
 </div>
 <div class="abt-r">${slot('about-hero', 'Nathan in the garage')}<div class="badge">Own it. Rent it. Replace it.</div></div>
 </section></div>
 <section id="story" class="tl pad">
-<div class="sticky"><span class="label amber">The story</span><h2 class="ind">From one garage to a system anyone can use.</h2><p>Four chapters, and the mission that came out of them.</p><a href="/consultation" class="btn yel sm" style="width:max-content">Free Consultation Call</a></div>
+<div class="sticky"><span class="label amber">The story</span><h2 class="ind">From one garage to a system anyone can use.</h2><p>Four chapters, and the mission that came out of them.</p><a href="/book" class="btn yel sm" style="width:max-content">Free Consultation Call</a></div>
 <div>${story.map((c, i) => `<div class="tli"><b>0${i + 1}</b><div><h3>${c[0]}</h3><p>${c[1]}</p></div></div>`).join('\n')}</div>
 </section>
 <section class="cats">
@@ -293,7 +395,7 @@ ${hazard}
 <section class="cta pad">
 <h2 class="disp" style="font-size:clamp(44px,5.5vw,80px)">Your first rental is closer than you think.</h2>
 <div style="display:flex;flex-direction:column;gap:22px"><p>Get chapter one of the Rent-repreneur Guide free — how to choose what to rent first, and what to avoid.</p>
-<div class="row"><a href="/consultation" class="btn blk-y" style="padding:18px 32px">Free Consultation Call</a><a href="/newsletter" class="btn out-k" style="padding:18px 32px">Get chapter one free</a></div></div>
+<div class="row"><a href="/book" class="btn blk-y" style="padding:18px 32px">Free Consultation Call</a><a href="/newsletter" class="btn out-k" style="padding:18px 32px">Get chapter one free</a></div></div>
 </section>
 ${footer(false)}`,
 });
@@ -340,58 +442,66 @@ ${navBack('newsletter', '/', '← Back home')}
 ${footer(false)}`,
 });
 
-/* ---------------- Consultation ---------------- */
-const consultation = shell({
-  title: 'Free Consultation Call — Nathan Curtis',
-  desc: "Tell me what you're renting (or want to rent) and we'll map out the tools you need to run it on autopilot.",
-  path: '/consultation',
+const book = shell2({
+  title: 'Book a free call — Nathan Curtis',
+  desc: "Already renting and out of time? Book a free 30-minute call and leave knowing exactly what to automate first.",
+  path: '/book',
   body: `
-${navBack('', '/about', '← Back to story')}
-<section class="fpage" style="min-height:0">
-<div class="fdark" style="justify-content:flex-start">
-<div style="display:flex;flex-direction:column;gap:22px">
-<span class="label">Free consultation call</span>
-<h1 class="disp" style="font-size:clamp(46px,5.4vw,78px)">Let's build your rental system.</h1>
-<p>Trailers or tools, cars or camping gear — tell me what you're renting (or want to rent) and we'll map out the tools you need to run it on autopilot.</p>
+<div class="bk-page">
+<div class="hz" aria-hidden="true"></div>
+<header class="hdr px">${logo('/')}<a href="/" class="back">← Back</a></header>
+<main class="book cols">
+<div class="bk-l">
+<div>
+<span class="eyebrow" style="color:#FAA534">Already renting? · Free 30-minute call</span>
+<h1 class="disp">Get your time back.</h1>
+<p>For owners juggling bookings, messages, deposits and pickups on top of a 9–5. We'll walk through how you run things today and find what to automate first.</p>
 </div>
-<div class="steps">
-<div><span class="ind">01</span><div><b>Where you are now</b><span class="d">What you rent, how bookings happen today, what eats your time.</span></div></div>
-<div><span class="ind">02</span><div><b>The system that fits</b><span class="d">Booking, payments, access and reminders — the stack I'd use in your shoes.</span></div></div>
-<div><span class="ind">03</span><div><b>Your next three steps</b><span class="d">You leave with a clear plan, whether or not we work together.</span></div></div>
+<div class="agenda">
+${[['How you run it today', 'Bookings, payments, messages, handoffs — where your hours go.'], ['What to automate first', 'The one or two changes that free up the most time.'], ['The tools I use', 'My exact setup, so you can copy what works.']]
+  .map(([t, b], i) => `<div><em>0${i + 1}</em><div><b>${t}</b><span>${b}</span></div></div>`).join('\n')}
 </div>
 </div>
-<div class="fright" style="justify-content:flex-start">
-<form class="f" style="gap:36px;max-width:520px" data-form="consultation" novalidate>
-<div style="display:flex;flex-direction:column;gap:10px"><h2 style="font-size:clamp(28px,3vw,38px)">Book your free call</h2><p class="sub">Fill this out and I'll reach out to schedule a time.</p></div>
-<div class="fsec"><span class="ind">01 — Contact</span>
-<div class="two"><label class="field">Full name<input name="name" required autocomplete="name" placeholder="Jane Smith"></label><label class="field">Phone<input type="tel" name="phone" autocomplete="tel" placeholder="(555) 123-4567"></label></div>
-<label class="field">Email<input type="email" name="email" required autocomplete="email" placeholder="you@email.com"></label></div>
-<div class="fsec"><span class="ind">02 — Your business</span>
-<div class="grp"><span>Have you already started a company?</span>${seg('started', ['Yes', 'Not yet', 'Getting started'], 1)}</div>
-<div class="grp"><span>What are you renting?</span>${chipGroup('renting', ['Shop / garage space', 'Trailers', 'Tools & equipment', 'Cars', 'Camping gear', 'Water gear', 'Other'])}</div>
-<label class="field">Website <em>Optional</em><input type="url" name="website" placeholder="https://yourrentals.com"></label></div>
-<div class="fsec"><span class="ind">03 — What you want to learn</span>
-${chipGroup('learn', ['Booking & payments', 'Automation', 'Pricing', 'Insurance & contracts', 'Marketing & listings', 'Scaling up', 'Choosing what to rent'])}
-<label class="field">Anything else?<textarea name="notes" rows="4" placeholder="Tell me what you're stuck on or what you want out of the call."></textarea></label></div>
-<div class="err" role="alert" data-err></div>
-<button type="submit" class="submit">Request my free call →</button>
+<div class="bk-r" data-book>
+<div data-step="0">
+<div class="bk-h"><em>Step 1 of 2</em><h2>Pick a time</h2><small>Times shown in your local time zone.</small></div>
+<div class="days" role="group" aria-label="Day" data-days></div>
+<div class="times" role="group" aria-label="Time" data-times>${['7:00 AM', '12:00 PM', '5:30 PM', '6:30 PM', '7:30 PM', '8:30 PM'].map((t) => `<button type="button" aria-pressed="false">${t}</button>`).join('')}</div>
+<button type="button" class="cta" data-next disabled>Select a time</button>
+</div>
+<form data-step="1" hidden novalidate>
+<div class="bk-h"><em>Step 2 of 2</em><h2>A little about your rentals</h2>
+<div class="slot"><span class="tag" data-slot-label></span><button type="button" class="change" data-back>Change</button></div></div>
+<div class="two cols">
+<label class="fld">Name<input name="name" required autocomplete="name" placeholder="Jane Smith"></label>
+<label class="fld">Email<input type="email" name="email" required autocomplete="email" placeholder="you@email.com"></label>
+</div>
+<div class="grp"><span>What do you rent?</span><div class="chips" data-chips="renting">${['Trailers', 'Tools', 'Cars', 'Outdoor equipment', 'Water craft', 'ATVs', 'Spaces', 'Other'].map((o) => `<button type="button" class="chip" aria-pressed="false">${o}</button>`).join('')}</div></div>
+<div class="grp"><span>What eats most of your time?</span><div class="chips" data-chips="drains">${['Booking & scheduling', 'Messages', 'Payments & deposits', 'Pickups & returns', 'Cleaning & upkeep', 'Listings & pricing'].map((o) => `<button type="button" class="chip" aria-pressed="false">${o}</button>`).join('')}</div></div>
+<label class="fld">Anything else? <em>Optional</em><textarea name="notes" rows="3" placeholder="How many rentals, what tools you use today, where you're stuck."></textarea></label>
+<div class="ferr" role="alert" data-err></div>
+<button type="submit" class="cta">Confirm my call →</button>
 </form>
-<div class="done" data-done hidden style="padding-top:40px">
-<span class="label amber">Request received</span>
+<div class="done" data-step="2" hidden>
+<span class="eyebrow amber">You're booked</span>
 <h2 class="disp">Talk soon.</h2>
-<p>I'll email you within two business days to lock in a time. In the meantime:</p>
-<div class="links"><a href="/guide"><span>Browse the Rent-repreneur Guide</span><span>→</span></a><a href="/#videos"><span>Watch the free videos</span><span>→</span></a><a href="/newsletter"><span>Join the newsletter</span><span>→</span></a></div>
+<span class="tag" data-slot-label></span>
+<p>I'll confirm with a calendar invite and call link in your inbox.</p>
+<a href="/" class="bar-btn l"><span>Back to home</span><span>→</span></a>
 </div>
 </div>
-</section>
-${footer(false, ['Free consultation', '/consultation'])}`,
+</main>
+<footer class="bk-foot px"><b>Nathan Curtis</b><span>© 2026 Nathan Curtis</span></footer>
+</div>`,
 });
 
-const pages = { 'index.html': home, 'guide.html': guide, 'about.html': about, 'newsletter.html': signup, 'consultation.html': consultation };
+const pages = { 'index.html': home, 'guide.html': guide, 'about.html': about, 'newsletter.html': signup, 'book.html': book };
 for (const [f, html] of Object.entries(pages)) writeFileSync(join(out, f), html);
 copyFileSync(join(root, 'src/styles.css'), join(out, 'styles.css'));
 copyFileSync(join(root, 'src/site.js'), join(out, 'site.js'));
+copyFileSync(join(root, 'src/home.css'), join(out, 'home.css'));
+copyFileSync(join(root, 'src/home.js'), join(out, 'home.js'));
 writeFileSync(join(out, 'robots.txt'), 'User-agent: *\nAllow: /\nSitemap: https://nathancurtis.space/sitemap.xml\n');
-const paths = ['/', '/guide', '/about', '/newsletter', '/consultation'];
+const paths = ['/', '/book', '/guide', '/about', '/newsletter'];
 writeFileSync(join(out, 'sitemap.xml'), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${paths.map((p) => `<url><loc>https://nathancurtis.space${p}</loc></url>`).join('\n')}\n</urlset>\n`);
 console.log('built', Object.keys(pages).length, 'pages');
