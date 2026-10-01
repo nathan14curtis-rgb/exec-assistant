@@ -31,4 +31,15 @@ NOTIFY_EMAIL = ""
 FROM_EMAIL = ""
 # Optional Cal.com / Calendly link included in the lead's confirmation email.
 BOOKING_URL = ""
-# Secrets (wrangler secret put): RESEND_API_KEY, NEWSLETTER_WEBHOOK_URL
+# /book: slots are offered in this zone and checked against this calendar's free/busy.
+# Share the calendar with GOOGLE_SA_EMAIL ("Make changes to events" also adds each call to it).
+OWNER_TZ = "America/Denver"
+BOOKING_CALENDAR_ID = "nathan@lockii.app"
+GOOGLE_SA_EMAIL = ""
+# Beehiiv publication (Settings → API) — every signup is added to the list.
+BEEHIIV_PUBLICATION_ID = ""
+# New bookings are texted from this Quo number to NOTIFY_PHONE (E.164).
+QUO_FROM = "+13853000774"
+NOTIFY_PHONE = ""
+# Secrets (wrangler secret put): GOOGLE_SA_PRIVATE_KEY, BEEHIIV_API_KEY, QUO_API_KEY,
+# RESEND_API_KEY, NEWSLETTER_WEBHOOK_URL

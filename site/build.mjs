@@ -466,7 +466,8 @@ ${[['How you run it today', 'Bookings, payments, messages, handoffs — where yo
 <div data-step="0">
 <div class="bk-h"><em>Step 1 of 2</em><h2>Pick a time</h2><small>Times shown in your local time zone.</small></div>
 <div class="days" role="group" aria-label="Day" data-days></div>
-<div class="times" role="group" aria-label="Time" data-times>${['7:00 AM', '12:00 PM', '5:30 PM', '6:30 PM', '7:30 PM', '8:30 PM'].map((t) => `<button type="button" aria-pressed="false">${t}</button>`).join('')}</div>
+<div class="times" role="group" aria-label="Time" data-times></div>
+<p class="ferr" data-slots-msg>Loading open times…</p>
 <button type="button" class="cta" data-next disabled>Select a time</button>
 </div>
 <form data-step="1" hidden novalidate>
