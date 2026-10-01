@@ -19,7 +19,14 @@ describe('notetaker redirects', () => {
 describe('parseSubmission', () => {
   it('validates email and name', () => {
     expect(parseSubmission('newsletter', { name: 'A', email: 'nope' }).ok).toBe(false);
-    expect(parseSubmission('newsletter', { name: '', email: 'a@b.co' }).ok).toBe(false);
+    expect(parseSubmission('consultation', { name: '', email: 'a@b.co' }).ok).toBe(false);
+  });
+  it('allows an email-only newsletter signup', () => {
+    expect(parseSubmission('newsletter', { email: 'a@b.co', source: 'popup' })).toMatchObject({ ok: true, name: '', data: { source: 'popup' } });
+  });
+  it('keeps the requested call slot and time drains', () => {
+    const p = parseSubmission('consultation', { name: 'A', email: 'a@b.co', slot: '2026-10-02T17:30', slot_label: 'Fri, Oct 2 · 5:30 PM', drains: ['Messages'] });
+    expect(p).toMatchObject({ ok: true, data: { slot: '2026-10-02T17:30', slot_label: 'Fri, Oct 2 · 5:30 PM', drains: ['Messages'] } });
   });
   it('normalises newsletter fields', () => {
     const p = parseSubmission('newsletter', { name: ' Jo ', email: 'JO@X.CO', interests: ['Cars', 5], stage: 'Ready to buy' });

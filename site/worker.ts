@@ -43,10 +43,11 @@ export type Parsed =
 export function parseSubmission(kind: string, b: Record<string, unknown>): Parsed {
   const name = str(b.name, 120);
   const email = str(b.email, 200).toLowerCase();
-  if (!name) return { ok: false, error: 'Please enter your name.' };
+  // The home page's inline signups only ask for an email; the booking form needs a name.
+  if (!name && kind !== 'newsletter') return { ok: false, error: 'Please enter your name.' };
   if (!EMAIL.test(email)) return { ok: false, error: 'Enter a valid email address.' };
   if (kind === 'newsletter') {
-    return { ok: true, kind, name, email, data: { interests: list(b.interests), stage: str(b.stage, 40) } };
+    return { ok: true, kind, name, email, data: { interests: list(b.interests), stage: str(b.stage, 40), source: str(b.source, 40) } };
   }
   if (kind === 'consultation') {
     const website = str(b.website, 300);
@@ -54,8 +55,10 @@ export function parseSubmission(kind: string, b: Record<string, unknown>): Parse
     return {
       ok: true, kind, name, email,
       data: {
+        // slot: requested call time from /book (ISO start + the label the visitor saw).
+        slot: str(b.slot, 40), slot_label: str(b.slot_label, 80),
         phone: str(b.phone, 40), website, started: str(b.started, 40),
-        renting: list(b.renting), learn: list(b.learn), notes: str(b.notes, 4000),
+        renting: list(b.renting), drains: list(b.drains), learn: list(b.learn), notes: str(b.notes, 4000),
       },
     };
   }
@@ -91,12 +94,16 @@ async function fanOut(env: SiteEnv, p: Extract<Parsed, { ok: true }>, id: string
       .map(([k, v]) => `<tr><td><b>${esc(k)}</b></td><td>${esc(Array.isArray(v) ? v.join(', ') : String(v || '—'))}</td></tr>`)
       .join('');
     if (env.NOTIFY_EMAIL) {
-      tasks.push(sendEmail(env, env.NOTIFY_EMAIL, `Consultation request: ${p.name}`,
+      const when = p.data.slot_label ? ` — ${p.data.slot_label}` : '';
+      tasks.push(sendEmail(env, env.NOTIFY_EMAIL, `Call request: ${p.name}${when}`,
         `<p><b>${esc(p.name)}</b> &lt;${esc(p.email)}&gt;</p><table>${rows}</table>`, p.email));
     }
     const book = env.BOOKING_URL ? `<p>Book a time here: <a href="${esc(env.BOOKING_URL)}">${esc(env.BOOKING_URL)}</a></p>` : '';
+    const asked = p.data.slot_label
+      ? `You asked for <b>${esc(String(p.data.slot_label))}</b>. I'll send a calendar invite and call link to confirm it.`
+      : "I'll email you within two business days to lock in a time.";
     tasks.push(sendEmail(env, p.email, 'Got your request — talk soon',
-      `<p>Hi ${esc(p.name.split(' ')[0])},</p><p>Thanks for requesting a free consultation call. I'll email you within two business days to lock in a time.</p>${book}<p>— Nathan</p>`,
+      `<p>Hi ${esc(p.name.split(' ')[0])},</p><p>Thanks for booking a free 30-minute call. ${asked}</p>${book}<p>— Nathan</p>`,
       env.NOTIFY_EMAIL));
   }
   await Promise.allSettled(tasks);
@@ -108,6 +115,10 @@ export default {
 
     const moved = notesRedirect(url, env.NOTES_ORIGIN);
     if (moved) return moved;
+    // The consultation request form became the Book a Call flow.
+    if (url.pathname === '/consultation' || url.pathname === '/consultation/') {
+      return Response.redirect(url.origin + '/book' + url.search, 301);
+    }
 
     const m = url.pathname.match(/^\/forms\/(newsletter|consultation)$/);
     if (m) {
