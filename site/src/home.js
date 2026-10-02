@@ -98,52 +98,79 @@
     });
   }
 
-  // Book a Call
+  // Book a Call: open slots come from /book/slots (owner's calendar), shown in the visitor's zone
   var bk = $('[data-book]');
   if (bk) {
-    var steps = $$('[data-step]', bk), state = { day: 0, time: null };
+    var steps = $$('[data-step]', bk), state = { day: 0, time: null }, groups = [];
+    var dayWrap = $('[data-days]', bk), timeWrap = $('[data-times]', bk), next = $('[data-next]', bk), msg = $('[data-slots-msg]', bk);
     var go = function (n) {
       steps.forEach(function (s) { s.hidden = s.getAttribute('data-step') !== String(n); });
       if (n > 0) bk.scrollIntoView({ block: 'start' });
     };
-    // Next 10 days, skipping Sundays
-    var days = [], d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + 1);
-    while (days.length < 10) { if (d.getDay() !== 0) days.push(new Date(d)); d.setDate(d.getDate() + 1); }
-    var dayWrap = $('[data-days]', bk), timeBtns = $$('[data-times] button', bk), next = $('[data-next]', bk);
+    var fmtDay = { weekday: 'short', month: 'short', day: 'numeric' };
+    var fmtTime = { hour: 'numeric', minute: '2-digit' };
+    var tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+
+    var renderTimes = function () {
+      timeWrap.innerHTML = '';
+      (groups[state.day] ? groups[state.day].slots : []).forEach(function (iso) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = new Date(iso).toLocaleTimeString(undefined, fmtTime);
+        b.setAttribute('aria-pressed', iso === state.time ? 'true' : 'false');
+        b.addEventListener('click', function () { state.time = iso; sync(); });
+        timeWrap.appendChild(b);
+      });
+    };
     var sync = function () {
       $$('button', dayWrap).forEach(function (b, k) { b.setAttribute('aria-pressed', k === state.day ? 'true' : 'false'); });
-      timeBtns.forEach(function (b) { b.setAttribute('aria-pressed', b.textContent === state.time ? 'true' : 'false'); });
+      renderTimes();
       next.disabled = !state.time;
       next.textContent = state.time ? 'Continue →' : 'Select a time';
     };
-    days.forEach(function (x, k) {
-      var b = document.createElement('button');
-      b.type = 'button';
-      b.setAttribute('aria-label', x.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }));
-      b.innerHTML = '<span></span><b></b><small></small>';
-      b.children[0].textContent = x.toLocaleDateString(undefined, { weekday: 'short' });
-      b.children[1].textContent = x.getDate();
-      b.children[2].textContent = x.toLocaleDateString(undefined, { month: 'short' });
-      b.addEventListener('click', function () { state.day = k; state.time = null; sync(); });
-      dayWrap.appendChild(b);
-    });
-    timeBtns.forEach(function (b) { b.addEventListener('click', function () { state.time = b.textContent; sync(); }); });
-    sync();
+    var load = function (note) {
+      state.time = null; next.disabled = true;
+      msg.hidden = false; msg.textContent = note || 'Loading open times…';
+      return fetch('/book/slots', { cache: 'no-store' })
+        .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+        .then(function (j) {
+          groups = [];
+          (j.slots || []).forEach(function (iso) {
+            var d = new Date(iso), key = d.toDateString(), g = groups[groups.length - 1];
+            if (!g || g.key !== key) groups.push(g = { key: key, date: d, slots: [] });
+            g.slots.push(iso);
+          });
+          groups = groups.slice(0, 10);
+          dayWrap.innerHTML = '';
+          groups.forEach(function (g, k) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.setAttribute('aria-label', g.date.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }));
+            b.innerHTML = '<span></span><b></b><small></small>';
+            b.children[0].textContent = g.date.toLocaleDateString(undefined, { weekday: 'short' });
+            b.children[1].textContent = g.date.getDate();
+            b.children[2].textContent = g.date.toLocaleDateString(undefined, { month: 'short' });
+            b.addEventListener('click', function () { state.day = k; state.time = null; sync(); });
+            dayWrap.appendChild(b);
+          });
+          if (state.day >= groups.length) state.day = 0;
+          if (groups.length) msg.hidden = !note;
+          else msg.textContent = 'No open times in the next two weeks. Email me and we will find one.';
+          sync();
+        })
+        .catch(function () { msg.textContent = "Couldn't load open times. Refresh to try again."; });
+    };
+    load();
 
-    var slot = function () {
-      var m = /^(\d+):(\d+) (AM|PM)$/.exec(state.time), t = new Date(days[state.day]);
-      t.setHours((+m[1] % 12) + (m[3] === 'PM' ? 12 : 0), +m[2], 0, 0);
-      var tz = '';
-      try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
-      return {
-        iso: t.toISOString(),
-        label: days[state.day].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + state.time + (tz ? ' (' + tz + ')' : ''),
-        short: days[state.day].toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · ' + state.time,
-      };
+    var labels = function () {
+      var d = new Date(state.time);
+      var short = d.toLocaleDateString(undefined, fmtDay) + ' · ' + d.toLocaleTimeString(undefined, fmtTime);
+      return { short: short, full: short + (tz ? ' (' + tz + ')' : '') };
     };
     next.addEventListener('click', function () {
       if (!state.time) return;
-      $$('[data-slot-label]', bk).forEach(function (s) { s.textContent = slot().short; });
+      $$('[data-slot-label]', bk).forEach(function (s) { s.textContent = labels().short; });
       go(1);
     });
     $('[data-back]', bk).addEventListener('click', function () { go(0); });
@@ -160,13 +187,22 @@
       err.textContent = '';
       var bad = $$('input', form).filter(function (el) { return !el.checkValidity(); })[0];
       if (bad) { err.textContent = bad.type === 'email' ? 'Enter a valid email address.' : 'Please enter your name.'; bad.focus(); return; }
-      var s = slot(), btn = $('button[type=submit]', form);
+      var btn = $('button[type=submit]', form);
       btn.disabled = true;
-      post('consultation', {
-        name: form.name.value.trim(), email: form.email.value.trim(), slot: s.iso, slot_label: s.label,
-        renting: picks('renting'), drains: picks('drains'), notes: form.notes.value.trim(),
+      fetch('/forms/consultation', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.value.trim(), email: form.email.value.trim(), slot: state.time, slot_label: labels().full,
+          renting: picks('renting'), drains: picks('drains'), notes: form.notes.value.trim(),
+        }),
       })
-        .then(function () { go(2); })
+        .then(function (r) {
+          return r.json().catch(function () { return {}; }).then(function (j) {
+            if (r.status === 409) { go(0); load(j.error); return; }
+            if (!r.ok) throw new Error(j.error || 'Something went wrong. Please try again.');
+            go(2);
+          });
+        })
         .catch(function (x) { err.textContent = x.message; })
         .then(function () { btn.disabled = false; });
     });
